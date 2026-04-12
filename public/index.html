@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seret</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+  <!-- Onboarding Overlay -->
+  <div class="onboarding" id="onboarding">
+    <div class="onboarding-inner" id="onboardingInner"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <a href="#" class="logo" onclick="showHome(); return false;">
+        <span class="logo-icon">S</span>
+        <span class="logo-text">Seret</span>
+      </a>
+      <div class="search-wrapper">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" data-i18n-placeholder="search_placeholder" placeholder="Search movies & series...">
+        <div id="searchResults" class="search-dropdown"></div>
+      </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-view="home" onclick="showHome()"><span data-i18n="nav_home">Home</span></button>
+        <button class="nav-btn" data-view="library" onclick="showLibrary()"><span data-i18n="nav_library">Library</span></button>
+        <button class="nav-btn" data-view="friends" onclick="showFriends()"><span data-i18n="nav_friends">Friends</span></button>
+        <button class="nav-btn" data-view="recommend" onclick="showRecommend()"><span data-i18n="nav_ai">Seret AI</span></button>
+        <button class="nav-btn" data-view="wrapped" onclick="showWrapped()"><span data-i18n="nav_wrapped">Wrapped</span></button>
+        <button class="icon-btn" onclick="openCameraModal()" title="Scan">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </button>
+        <button class="lang-toggle" onclick="toggleLang()" id="langBtn">FR</button>
+        <div class="stats-pill" id="statsPill" style="display:none" onclick="showStatsMenu()">
+          <span class="streak-flame">🔥</span><span id="streakCount">0</span>
+          <span class="stats-divider"></span>
+          <span class="points-star">⭐</span><span id="pointsCount">0</span>
+        </div>
+        <div class="profile-pill" id="profilePill" style="display:none" onclick="openProfilePicker()">
+          <span class="profile-pill-emoji" id="profilePillEmoji">🧘</span>
+          <span id="profilePillName">Solo</span>
+        </div>
+        <button class="auth-btn" id="authBtn" onclick="handleAuthClick()">
+          <span id="authBtnText" data-i18n="sign_in">Sign in</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="mainContent">
+    <!-- Home -->
+    <section id="homeView" class="view active">
+      <div class="hero" id="heroSection">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+          <h1 class="hero-title" id="heroTitle"></h1>
+          <p class="hero-meta" id="heroMeta"></p>
+          <p class="hero-desc" id="heroDesc"></p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" onclick="addHeroToLibrary('watched')">✓ <span data-i18n="seen">Seen</span></button>
+            <button class="btn btn-glass" onclick="addHeroToLibrary('to_watch')">+ <span data-i18n="to_watch">To Watch</span></button>
+            <button class="btn btn-glass" onclick="openHeroDetail()"><span data-i18n="details">Details</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="category-tabs">
+          <button class="cat-tab active" data-cat="all" onclick="selectCategory('all', this)" data-i18n="cat_all">All</button>
+          <button class="cat-tab" data-cat="movie" onclick="selectCategory('movie', this)" data-i18n="cat_movies">Films</button>
+          <button class="cat-tab" data-cat="tv" onclick="selectCategory('tv', this)" data-i18n="cat_series">Series</button>
+          <button class="cat-tab" data-cat="documentary" onclick="selectCategory('documentary', this)" data-i18n="cat_docs">Docs</button>
+          <button class="cat-tab" data-cat="anime" onclick="selectCategory('anime', this)" data-i18n="cat_anime">Anime</button>
+        </div>
+        <h2 class="section-title" data-i18n="trending">Trending</h2>
+        <div class="grid" id="trendingGrid"></div>
+      </div>
+    </section>
+
+    <!-- Library -->
+    <section id="libraryView" class="view">
+      <div class="section">
+        <div class="library-header">
+          <h2 class="section-title" data-i18n="my_library">My Library</h2>
+        </div>
+        <div class="library-tabs">
+          <button class="lib-tab active" data-section="watched" onclick="selectLibrarySection('watched', this)" data-i18n="seen_list">Seen</button>
+          <button class="lib-tab" data-section="to_watch" onclick="selectLibrarySection('to_watch', this)" data-i18n="watchlist">To Watch</button>
+        </div>
+        <div class="library-filters">
+          <button class="filter-btn active" onclick="filterLibrary('all', this)" data-i18n="all">All</button>
+          <button class="filter-btn" onclick="filterLibrary('movie', this)" data-i18n="movies">Movies</button>
+          <button class="filter-btn" onclick="filterLibrary('tv', this)" data-i18n="series">Series</button>
+        </div>
+        <div id="libraryGrid" class="grid"></div>
+        <div id="emptyLibrary" class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" width="56" height="56"><path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>
+          <p data-i18n="empty_library">Your library is empty. Search for movies to add them!</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Friends -->
+    <section id="friendsView" class="view">
+      <div class="section">
+        <div class="library-header"><h2 class="section-title" data-i18n="friends_title">Friends</h2></div>
+        <div id="friendsAuthWall" class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" width="56" height="56"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
+          <p data-i18n="friends_sign_in">Sign in to connect with friends</p>
+        </div>
+        <div id="friendsContent" style="display:none">
+          <div class="share-code-box">
+            <div class="share-code-label" data-i18n="your_share_code">Your share code</div>
+            <div class="share-code-value" id="myShareCode">—</div>
+            <button class="btn btn-sm btn-glass" onclick="copyShareCode()" data-i18n="copy">Copy</button>
+            <button class="btn btn-sm btn-gold" onclick="shareInvite()" data-i18n="invite">Invite</button>
+          </div>
+          <div class="add-friend-box">
+            <input type="text" id="friendCodeInput" data-i18n-placeholder="enter_friend_code" placeholder="Enter friend's code...">
+            <button class="btn btn-primary btn-sm" onclick="sendFriendRequest()" data-i18n="add_friend">Add</button>
+          </div>
+          <div class="group-watch-box">
+            <h3 class="friends-section-title" style="margin-top:0" data-i18n="group_watch">Tonight we watch...</h3>
+            <p class="friends-sub" data-i18n="group_watch_sub">Pick friends and let Seret AI find one for all of you</p>
+            <div id="groupPicker"></div>
+            <button class="btn btn-gold" onclick="getGroupRecommendation()" data-i18n="find_film">Find a Film</button>
+            <div id="groupResult"></div>
+          </div>
+          <div id="incomingRecos"></div>
+          <div id="pendingRequests"></div>
+          <div id="friendsList"></div>
+          <div id="friendLibrarySection" style="display:none">
+            <div class="friend-library-header">
+              <button class="btn btn-sm btn-glass" onclick="closeFriendLibrary()">← <span data-i18n="back">Back</span></button>
+              <h3 id="friendLibraryName"></h3>
+            </div>
+            <div id="friendLibraryGrid" class="grid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Seret AI -->
+    <section id="recommendView" class="view">
+      <div class="section">
+        <h2 class="section-title">Seret AI</h2>
+        <p class="section-sub" data-i18n="ai_sub">Cinematic intelligence tuned to your taste</p>
+
+        <div class="ai-card-section">
+          <div class="ai-section-label" data-i18n="mood_label">Tonight you feel</div>
+          <div class="mood-options">
+            <button class="mood-btn" data-mood="happy" onclick="selectMood('happy', this)"><div class="mood-emoji">😂</div><div data-i18n="mood_happy">Happy</div></button>
+            <button class="mood-btn" data-mood="sad" onclick="selectMood('sad', this)"><div class="mood-emoji">😢</div><div data-i18n="mood_sad">Emotional</div></button>
+            <button class="mood-btn" data-mood="scared" onclick="selectMood('scared', this)"><div class="mood-emoji">😱</div><div data-i18n="mood_scared">Thrilled</div></button>
+            <button class="mood-btn" data-mood="mind" onclick="selectMood('mind', this)"><div class="mood-emoji">🤯</div><div data-i18n="mood_mind">Mind-bending</div></button>
+            <button class="mood-btn" data-mood="tired" onclick="selectMood('tired', this)"><div class="mood-emoji">😴</div><div data-i18n="mood_tired">Chill</div></button>
+          </div>
+        </div>
+
+        <div class="ai-card-section">
+          <div class="ai-section-label" data-i18n="tonight_with">Tonight you watch with</div>
+          <div class="ctx-options">
+            <button class="ctx-btn active" data-ctx="solo" onclick="selectViewingContext('solo', this)"><div class="ctx-emoji">🧘</div><div data-i18n="ctx_solo">Solo</div></button>
+            <button class="ctx-btn" data-ctx="couple" onclick="selectViewingContext('couple', this)"><div class="ctx-emoji">💞</div><div data-i18n="ctx_couple">Couple</div></button>
+            <button class="ctx-btn" data-ctx="family" onclick="selectViewingContext('family', this)"><div class="ctx-emoji">👨‍👩‍👧</div><div data-i18n="ctx_family">Family</div></button>
+            <button class="ctx-btn" data-ctx="friends" onclick="selectViewingContext('friends', this)"><div class="ctx-emoji">🎉</div><div data-i18n="ctx_friends">Friends</div></button>
+          </div>
+        </div>
+
+        <div class="ai-buttons">
+          <button class="btn btn-gold btn-lg" onclick="getRecommendations()" data-i18n="get_recs">Get Recommendations</button>
+          <button class="btn btn-outline btn-lg" onclick="surpriseMe()">✨ <span data-i18n="surprise_me">Surprise me</span></button>
+        </div>
+
+        <div id="recsContent" style="margin-top:32px"></div>
+      </div>
+    </section>
+
+    <!-- Wrapped -->
+    <section id="wrappedView" class="view">
+      <div class="section">
+        <h2 class="section-title" data-i18n="wrapped_title">Your Year in Cinema</h2>
+        <p class="section-sub" id="wrappedYear">—</p>
+        <div id="wrappedContent"></div>
+        <button class="btn btn-gold btn-lg" onclick="loadWrapped()" data-i18n="generate_wrapped">Generate Wrapped</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Auth Modal -->
+  <div id="authModal" class="modal" onclick="if(event.target===this)closeAuthModal()">
+    <div class="modal-content auth-modal-content">
+      <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+      <div class="auth-modal-body">
+        <div class="auth-logo"><span class="logo-icon" style="width:56px;height:56px;font-size:30px">S</span></div>
+        <h2 class="auth-title" id="authModalTitle" data-i18n="sign_in_title">Sign in to Seret</h2>
+        <p class="auth-sub" data-i18n="sign_in_sub">Save your library and share it with friends</p>
+        <div class="auth-form">
+          <input type="email" id="authEmail" data-i18n-placeholder="email_placeholder" placeholder="Email">
+          <input type="password" id="authPassword" data-i18n-placeholder="password_placeholder" placeholder="Password">
+          <div id="authError" class="auth-error"></div>
+          <button class="btn btn-primary auth-submit-btn" id="authSubmitBtn" onclick="submitAuth()">
+            <span data-i18n="sign_in" id="authSubmitText">Sign in</span>
+          </button>
+          <p class="auth-switch">
+            <span id="authSwitchText" data-i18n="no_account">No account?</span>
+            <a href="#" id="authSwitchLink" onclick="toggleAuthMode(); return false;" data-i18n="create_account">Create one</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewing context modal -->
+  <div id="contextModal" class="modal" onclick="if(event.target===this)closeContextModal()">
+    <div class="modal-content ctx-modal-content">
+      <button class="modal-close" onclick="closeContextModal()">&times;</button>
+      <div class="ctx-modal-body">
+        <h2 class="auth-title" data-i18n="watched_how">How did you watch it?</h2>
+        <div class="ctx-options">
+          <button class="ctx-btn" onclick="saveWithContext('solo')"><div class="ctx-emoji">🧘</div><div data-i18n="ctx_solo">Solo</div></button>
+          <button class="ctx-btn" onclick="saveWithContext('couple')"><div class="ctx-emoji">💞</div><div data-i18n="ctx_couple">Couple</div></button>
+          <button class="ctx-btn" onclick="saveWithContext('family')"><div class="ctx-emoji">👨‍👩‍👧</div><div data-i18n="ctx_family">Family</div></button>
+          <button class="ctx-btn" onclick="saveWithContext('friends')"><div class="ctx-emoji">🎉</div><div data-i18n="ctx_friends">Friends</div></button>
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="saveWithContext(null)" data-i18n="skip">Skip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats / badges modal -->
+  <div id="badgesModal" class="modal" onclick="if(event.target===this)closeBadgesModal()">
+    <div class="modal-content" style="max-width:600px">
+      <button class="modal-close" onclick="closeBadgesModal()">&times;</button>
+      <div class="modal-body">
+        <h2 class="auth-title" style="font-family:var(--serif);margin:32px 40px 4px" data-i18n="your_stats">Your Stats</h2>
+        <div class="stats-body" id="statsBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail modal -->
+  <div id="detailModal" class="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Recommend to friend modal -->
+  <div id="recoModal" class="modal" onclick="if(event.target===this)closeRecoModal()">
+    <div class="modal-content auth-modal-content">
+      <button class="modal-close" onclick="closeRecoModal()">&times;</button>
+      <div class="auth-modal-body">
+        <h2 class="auth-title" data-i18n="reco_title">Recommend to...</h2>
+        <div id="recoFriendsList" style="margin-bottom:16px"></div>
+        <textarea id="recoMessage" class="journal-box" data-i18n-placeholder="reco_msg_ph" placeholder="Your message..." style="width:100%;min-height:80px;padding:14px;background:var(--bg-2);border:1px solid var(--border);border-radius:12px;color:var(--text);outline:none;resize:vertical;margin-bottom:12px"></textarea>
+        <button class="btn btn-gold" style="width:100%;justify-content:center" onclick="sendRecoToFriend()" data-i18n="send_reco">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera modal -->
+  <div id="cameraModal" class="modal" onclick="if(event.target===this)closeCameraModal()">
+    <div class="modal-content" style="max-width:480px">
+      <button class="modal-close" onclick="closeCameraModal()">&times;</button>
+      <div class="camera-modal-body">
+        <h2 class="auth-title" data-i18n="scan_title">Scan a film</h2>
+        <p class="camera-hint" data-i18n="scan_hint">Photograph a poster, DVD cover, or a playing screen. Seret AI will identify it.</p>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event)">
+        <div class="camera-preview" id="cameraPreview"><div style="color:var(--text-dim)">📷</div></div>
+        <button class="btn btn-primary" onclick="document.getElementById('cameraInput').click()" data-i18n="take_photo">Take / Select Photo</button>
+        <div id="cameraResult"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=14"></script>
+</body>
+</html>
