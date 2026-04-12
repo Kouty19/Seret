@@ -1090,6 +1090,9 @@ async function openDetail(type, id) {
       backdrop, overview, rating };
 
     body.innerHTML = `
+      <button class="modal-back-btn" onclick="closeModal()" aria-label="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
       ${backdrop ? `<img class="modal-backdrop" src="${backdrop}" alt="">` : ''}
       <div class="modal-info">
         <div class="modal-title">${esc(title)}</div>
@@ -1473,18 +1476,31 @@ function showWhatsAppSharePrompt(item) {
   setTimeout(() => toast.remove(), 10000);
 }
 
+function openWhatsApp(msg) {
+  const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  // iOS-friendly: trigger via anchor element click
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 100);
+}
+
 function manualShare(tmdbId, type, title) {
   const item = library.find(l => l.id === tmdbId && l.type === type) || { id: tmdbId, type, title, userRating: 0 };
   const msg = buildWhatsAppMessage(item);
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  openWhatsApp(msg);
 }
 function shareInvite() {
   const code = userProfile?.share_code;
   if (!code) return;
+  const origin = window.location.origin;
   const msg = currentLang === 'fr'
-    ? `Rejoins-moi sur Seret 🎬 Mon code: ${code}\nhttps://seret.app`
-    : `Join me on Seret 🎬 My code: ${code}\nhttps://seret.app`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    ? `Rejoins-moi sur Seret 🎬\nMon code: *${code}*\n${origin}`
+    : `Join me on Seret 🎬\nMy code: *${code}*\n${origin}`;
+  openWhatsApp(msg);
 }
 
 // ===== Seasons =====
@@ -1751,9 +1767,9 @@ async function loadWrapped() {
 }
 function shareWrapped(d) {
   const msg = currentLang === 'fr'
-    ? `Mon annee cinema sur Seret 🎬: ${d.total} titres, ${d.movies} films, ${d.shows} series, ${d.fiveStars} coups de coeur. Note moyenne ${d.avgRating}/10`
-    : `My cinema year on Seret 🎬: ${d.total} titles, ${d.movies} movies, ${d.shows} series, ${d.fiveStars} favorites. Avg ${d.avgRating}/10`;
-  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    ? `🎬 Mon annee cinema sur Seret\n\n*${d.total}* titres visionnes\n🎥 ${d.movies} films · 📺 ${d.shows} series\n❤️ ${d.fiveStars} coups de coeur\n⭐ Note moyenne ${d.avgRating}/10\n\n${window.location.origin}`
+    : `🎬 My cinema year on Seret\n\n*${d.total}* titles watched\n🎥 ${d.movies} movies · 📺 ${d.shows} series\n❤️ ${d.fiveStars} favorites\n⭐ Avg ${d.avgRating}/10\n\n${window.location.origin}`;
+  openWhatsApp(msg);
 }
 
 // ===== Keyboard =====
