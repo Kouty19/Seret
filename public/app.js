@@ -1542,7 +1542,9 @@ function showFriends() {
 }
 function setActiveNav(v) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  document.querySelectorAll('.mbn-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   document.querySelectorAll('.view').forEach(v2 => v2.classList.remove('active'));
+  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 async function loadFriends() {
