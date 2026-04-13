@@ -33,6 +33,16 @@ function tmdbFetch(endpoint, params = {}) {
   });
 }
 
+function isAppropriate(r) {
+  if (r.adult === true) return false;
+  // Block NSFW genres: Adult (film) = no explicit genre id, but many adult content
+  // has genre_ids = [10749, 18] + adult=true. We also filter by keywords.
+  const blockedKeywords = ['xxx', 'porn', 'porno', 'adult', 'erotic', 'nude', 'nudity'];
+  const text = ((r.title || r.name || '') + ' ' + (r.overview || '')).toLowerCase();
+  if (blockedKeywords.some(k => text.includes(k))) return false;
+  return true;
+}
+
 function mapItem(r) {
   return {
     id: r.id,
@@ -51,7 +61,10 @@ app.get('/api/search', async (req, res) => {
   if (!q) return res.json({ results: [] });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   const data = await tmdbFetch('/search/multi', { query: q, language: lang, include_adult: 'false' });
-  const results = (data.results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv').map(mapItem);
+  const results = (data.results || [])
+    .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
+    .filter(isAppropriate)
+    .map(mapItem);
   res.json({ results });
 });
 
@@ -59,23 +72,24 @@ app.get('/api/trending', async (req, res) => {
   const { lang = 'en-US', category = 'all' } = req.query;
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
-    let results = [];
+    let raw = [];
     if (category === 'all') {
       const data = await tmdbFetch('/trending/all/week', { language: lang });
-      results = (data.results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv').map(mapItem);
+      raw = (data.results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv');
     } else if (category === 'movie') {
       const data = await tmdbFetch('/trending/movie/week', { language: lang });
-      results = (data.results || []).map(r => ({ ...mapItem(r), type: 'movie' }));
+      raw = (data.results || []).map(r => ({ ...r, media_type: 'movie' }));
     } else if (category === 'tv') {
       const data = await tmdbFetch('/trending/tv/week', { language: lang });
-      results = (data.results || []).map(r => ({ ...mapItem(r), type: 'tv' }));
+      raw = (data.results || []).map(r => ({ ...r, media_type: 'tv' }));
     } else if (category === 'documentary') {
-      const data = await tmdbFetch('/discover/movie', { language: lang, with_genres: '99', sort_by: 'popularity.desc' });
-      results = (data.results || []).map(r => ({ ...mapItem(r), type: 'movie' }));
+      const data = await tmdbFetch('/discover/movie', { language: lang, with_genres: '99', sort_by: 'popularity.desc', include_adult: 'false' });
+      raw = (data.results || []).map(r => ({ ...r, media_type: 'movie' }));
     } else if (category === 'anime') {
-      const data = await tmdbFetch('/discover/tv', { language: lang, with_genres: '16', with_origin_country: 'JP', sort_by: 'popularity.desc' });
-      results = (data.results || []).map(r => ({ ...mapItem(r), type: 'tv' }));
+      const data = await tmdbFetch('/discover/tv', { language: lang, with_genres: '16', with_origin_country: 'JP', sort_by: 'popularity.desc', include_adult: 'false' });
+      raw = (data.results || []).map(r => ({ ...r, media_type: 'tv' }));
     }
+    const results = raw.filter(isAppropriate).map(mapItem);
     res.json({ results: results.slice(0, 30) });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -87,8 +101,8 @@ app.get('/api/calibration-set', async (req, res) => {
   const { lang = 'en-US' } = req.query;
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
-    const pages = await Promise.all([1, 2].map(p => tmdbFetch('/movie/popular', { language: lang, page: p })));
-    const all = pages.flatMap(p => p.results || []).filter(r => r.poster_path);
+    const pages = await Promise.all([1, 2].map(p => tmdbFetch('/movie/popular', { language: lang, page: p, include_adult: 'false' })));
+    const all = pages.flatMap(p => p.results || []).filter(r => r.poster_path).filter(isAppropriate);
     // Shuffle and pick 20
     for (let i = all.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));

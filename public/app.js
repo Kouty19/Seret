@@ -342,12 +342,18 @@ async function loadSubProfiles() {
   if (!sb || !currentUser) return;
   const { data } = await sb.from('user_profiles').select('*').eq('account_id', currentUser.id).order('created_at');
   userProfiles = data || [];
-  // Session-scoped: if profile was selected in this tab session, keep it
-  const sessionId = sessionStorage.getItem('seret-session-profile');
-  if (sessionId) {
-    activeProfile = userProfiles.find(p => String(p.id) === sessionId) || null;
+  // Seamless access: always restore last-used profile so user goes straight to dashboard
+  const lastId = sessionStorage.getItem('seret-session-profile') || localStorage.getItem('seret-active-profile');
+  if (lastId) {
+    activeProfile = userProfiles.find(p => String(p.id) === lastId) || null;
   }
-  if (activeProfile) showProfilePill();
+  // Fallback: if only one profile exists, auto-select it
+  if (!activeProfile && userProfiles.length === 1) activeProfile = userProfiles[0];
+  if (activeProfile) {
+    localStorage.setItem('seret-active-profile', String(activeProfile.id));
+    sessionStorage.setItem('seret-session-profile', String(activeProfile.id));
+    showProfilePill();
+  }
 }
 
 function isImageAvatar(a) { return a && (a.startsWith('data:') || a.startsWith('http')); }
@@ -969,8 +975,11 @@ async function loadTrending() {
   } catch (e) { console.error(e); }
 }
 function trendingCardHTML(r) {
-  const skipped = getNotInterested().includes(`${r.id}_${r.type}`);
-  if (skipped) return '';
+  const key = `${r.id}_${r.type}`;
+  const skipped = getNotInterested().includes(key);
+  // Also check library_items flag
+  const inLibSkipped = library.some(l => l.id === r.id && l.type === r.type && l.not_interested);
+  if (skipped || inLibSkipped) return '';
   return `
     <div class="card trending-card">
       <div class="card-poster" onclick="openDetail('${r.type}', ${r.id})">
@@ -1008,15 +1017,37 @@ function notInterestedKey() {
   return `seret-not-interested-${currentUser?.id || 'local'}-${activeProfile?.id || 'none'}`;
 }
 function getNotInterested() {
-  try { return JSON.parse(localStorage.getItem(notInterestedKey()) || '[]'); }
-  catch { return []; }
+  // Prefer in-memory library flags (from Supabase) for connected users
+  const fromLib = library.filter(l => l.not_interested).map(l => `${l.id}_${l.type}`);
+  try {
+    const fromLocal = JSON.parse(localStorage.getItem(notInterestedKey()) || '[]');
+    return [...new Set([...fromLib, ...fromLocal])];
+  } catch { return fromLib; }
 }
-function markNotInterested(id, type, btn) {
-  const skipped = getNotInterested();
+async function markNotInterested(id, type, btn) {
+  // Local cache
+  const skipped = JSON.parse(localStorage.getItem(notInterestedKey()) || '[]');
   const key = `${id}_${type}`;
   if (!skipped.includes(key)) {
     skipped.push(key);
     localStorage.setItem(notInterestedKey(), JSON.stringify(skipped));
+  }
+  // Persist to Supabase so it sticks across devices
+  if (sb && currentUser && activeProfile) {
+    const existing = library.find(l => l.id === id && l.type === type);
+    if (existing) {
+      existing.not_interested = true;
+      await sb.from('library_items').update({ not_interested: true })
+        .eq('user_id', currentUser.id).eq('profile_id', activeProfile.id)
+        .eq('tmdb_id', id).eq('media_type', type);
+    } else {
+      library.push({ id, type, title: '', not_interested: true, addedAt: Date.now() });
+      await sb.from('library_items').insert({
+        user_id: currentUser.id, profile_id: activeProfile.id,
+        tmdb_id: id, media_type: type, title: '',
+        status: 'watched', not_interested: true,
+      });
+    }
   }
   logEvent('skipped', id, type);
   if (btn) btn.closest('.trending-card').style.display = 'none';
