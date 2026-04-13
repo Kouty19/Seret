@@ -226,6 +226,7 @@ async function onAuthChange() {
       openProfilePicker();
     } else {
       await loadLibraryForProfile();
+      loadTrending(); // re-render trending now that library is ready (filters skipped)
       checkDailyStreak();
       checkNewSeasons();
       loadIncomingRecos();
@@ -686,9 +687,16 @@ function openProfilePicker() {
   overlay.classList.add('active');
   const inner = document.getElementById('onboardingInner');
   const lastUsedId = localStorage.getItem('seret-active-profile');
+  const langOther = currentLang === 'en' ? 'FR' : 'EN';
   inner.innerHTML = `
     <h1 class="onboarding-title">${t('select_profile')}</h1>
     <p class="onboarding-sub" style="margin-bottom:32px">${userProfile?.display_name || ''}</p>
+    ${currentUser ? `
+      <div class="picker-stats">
+        <div class="picker-stat"><span>🔥</span> ${userStats.streak_days || 0}</div>
+        <div class="picker-stat"><span>⭐</span> ${userStats.points || 0}</div>
+        <div class="picker-stat"><span>🏅</span> ${(userStats.badges || []).length}</div>
+      </div>` : ''}
     <div class="profiles-grid">
       ${userProfiles.map(p => {
         const isActive = activeProfile?.id === p.id;
@@ -712,8 +720,10 @@ function openProfilePicker() {
           <div class="profile-tile-name">${t('add_profile')}</div>
         </div>` : ''}
     </div>
-    <div style="display:flex;gap:10px;justify-content:center;margin-top:40px">
+    <div class="picker-actions">
       ${activeProfile ? `<button class="btn btn-glass btn-sm" onclick="closeOnboarding()">${t('back')}</button>` : ''}
+      <button class="btn btn-outline btn-sm" onclick="toggleLang()">${langOther}</button>
+      <button class="btn btn-outline btn-sm" onclick="showStatsMenu();closeOnboarding()">🏆 ${t('your_stats')}</button>
       <button class="btn btn-outline btn-sm" onclick="confirmSignOut()">${t('sign_out')}</button>
     </div>
   `;
@@ -807,6 +817,7 @@ function itemToRow(item) {
     viewing_context: item.viewing_context || null,
     priority: item.priority || 0,
     comment: item.comment || null,
+    not_interested: item.not_interested === true ? true : false,
   };
 }
 

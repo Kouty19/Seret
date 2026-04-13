@@ -958,6 +958,21 @@ main { padding-top: 68px; }
   color: var(--text-dim);
   font-size: 36px;
 }
+
+/* Profile picker: stats strip + actions row */
+.picker-stats {
+  display: flex; justify-content: center; gap: 20px;
+  margin-bottom: 32px;
+  color: var(--text-dim); font-size: 13px;
+  font-weight: 600;
+}
+.picker-stat { display: flex; align-items: center; gap: 6px; }
+.picker-stat span { font-size: 16px; }
+
+.picker-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  justify-content: center; margin-top: 40px;
+}
 .profile-tile-emoji.has-image,
 .profile-tile-emoji img {
   width: 88px; height: 88px;
@@ -1440,21 +1455,25 @@ main { padding-top: 68px; }
   .logo-text { display: none; }
   .logo-icon { width: 36px; height: 36px; font-size: 18px; }
 
-  /* Hide desktop top nav items on mobile */
+  /* Hide desktop top nav + stats + lang on mobile — access via profile menu */
   .nav-btn { display: none !important; }
-  .lang-toggle { padding: 5px 9px; font-size: 10px; }
-  .stats-pill { padding: 4px 9px; font-size: 11px; }
-  .stats-pill .stats-divider { margin: 0 2px; }
-  .profile-pill { padding: 4px 10px 4px 4px; font-size: 11px; }
-  .profile-pill-emoji { width: 22px; height: 22px; }
+  .lang-toggle { display: none; }
+  .stats-pill { display: none !important; }
+  .profile-pill { display: none !important; }
   .auth-btn {
-    padding: 6px 10px; font-size: 11px;
-    min-width: 44px; min-height: 34px;
+    padding: 7px 14px; font-size: 12px;
+    min-width: 44px; min-height: 36px;
+    font-weight: 600;
+  }
+  .auth-btn.logged-in {
+    padding: 4px;
+    padding-right: 12px;
   }
   .auth-btn span {
-    max-width: 80px; overflow: hidden;
+    max-width: 100px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
+  .auth-avatar { width: 28px; height: 28px; }
 
   /* Show bottom nav */
   .mobile-bottom-nav { display: flex; }
@@ -1609,18 +1628,31 @@ main { padding-top: 68px; }
     min-height: 36px; padding: 7px 14px;
     flex-shrink: 0;
   }
+  /* Library cards: actions visible in a gradient at bottom of poster */
   .card-library-actions {
     opacity: 1;
-    background: transparent;
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 80%);
     backdrop-filter: none;
-    inset: auto 4px 4px 4px;
-    height: auto;
+    inset: auto 0 0 0;
+    top: auto;
+    height: 40%;
     display: flex; flex-direction: row;
-    justify-content: flex-end;
+    align-items: flex-end; justify-content: center;
+    padding: 8px 6px;
     gap: 4px;
+    pointer-events: none;
   }
-  .card-library-actions .btn { min-height: 28px; padding: 4px 8px; font-size: 10px; }
-  .user-rating .star { font-size: 16px; padding: 2px; }
+  .card-library-actions .btn {
+    pointer-events: auto;
+    min-height: 28px; padding: 4px 9px;
+    font-size: 11px; font-weight: 600;
+  }
+  .user-rating {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  .user-rating .star { font-size: 14px; padding: 2px; }
 
   /* Modal — fullscreen on mobile */
   .modal { padding: 0; }
@@ -1645,12 +1677,17 @@ main { padding-top: 68px; }
   /* On mobile hide the close X since we have the back arrow */
   .modal-close { display: none; }
   .modal-backdrop {
-    height: 280px;
+    height: 300px;
     border-radius: 0;
+    width: 100%;
+    object-fit: cover;
+    object-position: center top;
   }
   .modal-info {
-    padding: 8px 20px calc(40px + env(safe-area-inset-bottom));
-    margin-top: -60px;
+    padding: 16px 20px calc(100px + env(safe-area-inset-bottom));
+    margin-top: -50px;
+    position: relative;
+    z-index: 2;
   }
   .modal-title { font-size: 26px; }
   .modal-meta { font-size: 11px; gap: 10px; }
