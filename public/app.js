@@ -931,8 +931,8 @@ function cardHTML(r, isLibrary = false, readonly = false, friendId = null) {
         ${r.viewing_context ? `<div class="ctx-badge">${ctxEmoji(r.viewing_context)}</div>` : ''}
         ${isLibrary && !readonly ? `
           <div class="card-library-actions" onclick="event.stopPropagation()">
-            <button class="btn btn-xs btn-gold" onclick="manualShare(${tmdbId}, '${type}', ${JSON.stringify(esc(r.title))})">💬 WhatsApp</button>
-            <button class="btn btn-xs btn-danger" onclick="removeFromLibrary(${tmdbId}, '${type}')">${t('removed')}</button>
+            <button class="btn btn-xs btn-gold" onclick="event.stopPropagation();manualShare(${tmdbId}, '${type}', ${JSON.stringify(esc(r.title))})">💬 WhatsApp</button>
+            <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();removeFromLibrary(${tmdbId}, '${type}')">${t('removed')}</button>
           </div>` : ''}
       </div>
       <div class="card-title">${esc(r.title)}</div>
@@ -1519,15 +1519,16 @@ function showWhatsAppSharePrompt(item) {
 }
 
 function openWhatsApp(msg) {
-  const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-  // iOS-friendly: trigger via anchor element click
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener noreferrer';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => a.remove(), 100);
+  const encoded = encodeURIComponent(msg);
+  // Detect mobile: use direct navigation (most reliable for iOS/Android)
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    // whatsapp:// opens the app directly if installed; wa.me is the fallback
+    window.location.href = `https://wa.me/?text=${encoded}`;
+  } else {
+    // Desktop: open in new tab
+    window.open(`https://web.whatsapp.com/send?text=${encoded}`, '_blank');
+  }
 }
 
 function manualShare(tmdbId, type, title) {
