@@ -1158,12 +1158,26 @@ searchInput.addEventListener('focus', () => { if (searchResults.innerHTML) searc
 document.addEventListener('click', (e) => { if (!e.target.closest('.search-wrapper')) searchResults.classList.remove('active'); });
 async function doSearch(q) {
   const lang = currentLang === 'fr' ? 'fr-FR' : 'en-US';
-  const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&lang=${lang}`);
-  const data = await res.json();
-  if (!data.results?.length) {
-    searchResults.innerHTML = `<div class="search-item"><span style="color:var(--text-dim)">${currentLang === 'fr' ? 'Aucun resultat' : 'No results'}</span></div>`;
-  } else {
-    searchResults.innerHTML = data.results.slice(0, 8).map(r => `
+  const [titleRes, personRes] = await Promise.all([
+    fetch(`/api/search?q=${encodeURIComponent(q)}&lang=${lang}`).then(r => r.json()).catch(() => ({ results: [] })),
+    fetch(`/api/person-search?q=${encodeURIComponent(q)}&lang=${lang}`).then(r => r.json()).catch(() => ({ person: null })),
+  ]);
+  const titles = titleRes.results || [];
+  let html = '';
+  if (personRes.person) {
+    const p = personRes.person;
+    html += `
+      <div class="search-item" onclick="openPersonView(${p.id}, ${JSON.stringify(esc(p.name))})" style="border-bottom:1px solid var(--border)">
+        ${p.profile ? `<img src="${p.profile}" loading="lazy" style="border-radius:50%">` : `<div class="no-poster">👤</div>`}
+        <div class="search-item-info">
+          <div class="search-item-title">${esc(p.name)}</div>
+          <div class="search-item-meta">${p.known_for || 'Cast'} · ${personRes.credits?.length || 0} ${currentLang === 'fr' ? 'films' : 'films'}</div>
+        </div>
+        <span class="badge">${currentLang === 'fr' ? 'Personne' : 'Person'}</span>
+      </div>`;
+  }
+  if (titles.length) {
+    html += titles.slice(0, 7).map(r => `
       <div class="search-item" onclick="openDetail('${r.type}', ${r.id})">
         ${r.poster ? `<img src="${r.poster}" loading="lazy">` : `<div class="no-poster">🎬</div>`}
         <div class="search-item-info">
@@ -1173,7 +1187,64 @@ async function doSearch(q) {
         <span class="badge">${r.type === 'movie' ? 'Film' : 'TV'}</span>
       </div>`).join('');
   }
+  if (!html) {
+    html = `<div class="search-item"><span style="color:var(--text-dim)">${currentLang === 'fr' ? 'Aucun resultat' : 'No results'}</span></div>`;
+  }
+  searchResults.innerHTML = html;
   searchResults.classList.add('active');
+}
+
+// ===== Person view (filmography) =====
+async function openPersonView(id, name) {
+  searchResults.classList.remove('active');
+  const modal = document.getElementById('detailModal');
+  const body = document.getElementById('modalBody');
+  body.innerHTML = '<div class="recs-loading"><div class="spinner"></div></div>';
+  modal.classList.add('active');
+  try {
+    const res = await fetch(`/api/person-search?q=${encodeURIComponent(name)}&lang=${currentLang === 'fr' ? 'fr-FR' : 'en-US'}`);
+    const data = await res.json();
+    const p = data.person;
+    const credits = data.credits || [];
+    if (!p) { body.innerHTML = '<div style="padding:40px">Not found</div>'; return; }
+    const unseen = credits.filter(c => !library.find(l => l.id === c.id && l.type === c.type));
+    body.innerHTML = `
+      <button class="modal-back-btn" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="modal-info" style="padding-top:48px">
+        <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:24px">
+          ${p.profile ? `<img src="${p.profile}" style="width:140px;height:180px;object-fit:cover;border-radius:14px">` : ''}
+          <div style="flex:1">
+            <div class="modal-title" style="font-size:32px">${esc(p.name)}</div>
+            <div class="modal-meta">${p.known_for || 'Cast'}</div>
+            ${p.biography ? `<div style="font-size:14px;color:var(--text);line-height:1.6;margin-top:12px;max-height:160px;overflow:auto">${esc(p.biography.slice(0, 600))}${p.biography.length > 600 ? '…' : ''}</div>` : ''}
+          </div>
+        </div>
+        ${unseen.length ? `<button class="btn btn-gold" style="margin-bottom:20px" onclick="addAllToWatchlist(${JSON.stringify(unseen).replace(/"/g, '&quot;')})">+ ${currentLang === 'fr' ? `Ajouter tout ce que je n'ai pas vu (${unseen.length})` : `Add everything I haven't seen (${unseen.length})`}</button>` : ''}
+        <div class="modal-section-title">${currentLang === 'fr' ? 'Filmographie' : 'Filmography'}</div>
+        <div class="grid">
+          ${credits.map(c => {
+            const seen = library.find(l => l.id === c.id && l.type === c.type);
+            return `<div class="card" onclick="openDetail('${c.type}', ${c.id})">
+              <div class="card-poster">${c.poster ? `<img src="${c.poster}" loading="lazy">` : ''}<div class="rating-badge">★ ${c.rating?.toFixed(1) || '—'}</div>${seen ? `<div class="ctx-badge">✓</div>` : ''}</div>
+              <div class="card-title">${esc(c.title)}</div>
+              <div class="card-year">${c.year || ''}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:40px;color:var(--danger)">${e.message}</div>`;
+  }
+}
+
+async function addAllToWatchlist(items) {
+  let added = 0;
+  for (const c of items) {
+    const item = { id: c.id, type: c.type, title: c.title, year: c.year, poster: c.poster, backdrop: c.backdrop, overview: c.overview, rating: c.rating, status: 'to_watch' };
+    if (addToLibrary(item)) added++;
+  }
+  showToast(`${added} ${currentLang === 'fr' ? 'ajoutes' : 'added'}`);
+  awardPoints(added * 2);
 }
 
 // ===== Detail Modal =====
@@ -1260,7 +1331,7 @@ async function openDetail(type, id) {
           </div>
         </div>
         ${userRatingHTML}
-        ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}">`).join('')}</div>` : ''}
+        ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<a href="${providerSearchUrl(p.provider_name, title)}" target="_blank" rel="noopener noreferrer" title="${esc(p.provider_name)}"><img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}"></a>`).join('')}</div>` : ''}
         ${overview ? `<div class="modal-overview">${esc(overview)}</div>` : ''}
         <div class="modal-actions">
           ${primaryActions}
@@ -1537,6 +1608,7 @@ async function getRecommendations(surprise = false) {
 function surpriseMe() { getRecommendations(true); }
 
 function renderRecommendations(data) {
+  if (data.persona) window._seretPersona = data.persona; // persisted for Wrapped canvas
   const content = document.getElementById('recsContent');
   const recs = data.recommendations || [];
   content.innerHTML = `
@@ -2043,8 +2115,12 @@ async function loadWrapped() {
     body: JSON.stringify({ library, year, lang: currentLang }),
   });
   const data = await res.json();
+  // Favourite genre + top title
+  const favTitle = data.top?.[0]?.title || '—';
+  const persona = window._seretPersona || 'Cinephile';
   document.getElementById('wrappedYear').textContent = year;
   document.getElementById('wrappedContent').innerHTML = `
+    <canvas id="wrappedCanvas" width="1080" height="1920" style="width:100%;max-width:380px;display:block;margin:20px auto;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)"></canvas>
     <div class="wrapped-grid">
       <div class="wrapped-card gradient-1"><div class="wrapped-value">${data.total}</div><div class="wrapped-label">${t('total_watched')}</div></div>
       <div class="wrapped-card gradient-2"><div class="wrapped-value">${data.movies}</div><div class="wrapped-label">${t('movies_count')}</div></div>
@@ -2053,13 +2129,131 @@ async function loadWrapped() {
       <div class="wrapped-card gradient-5"><div class="wrapped-value">${data.avgRating}</div><div class="wrapped-label">${t('avg_rating')}</div></div>
     </div>
     ${data.top && data.top.length ? `<div class="ai-section-label">${t('top_picks')}</div><div class="grid">${data.top.map(r => cardHTML(r, true, true)).join('')}</div>` : ''}
-    <button class="btn btn-gold" style="margin-top:20px" onclick='shareWrapped(${JSON.stringify(data).replace(/"/g, "&quot;")})'>${t('share_whatsapp')}</button>`;
+    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
+      <button class="btn btn-gold" onclick="downloadWrappedImage()">⬇ ${currentLang === 'fr' ? 'Telecharger' : 'Download'}</button>
+      <button class="btn btn-outline" onclick='shareWrapped(${JSON.stringify(data).replace(/"/g, "&quot;")})'>💬 WhatsApp</button>
+      <button class="btn btn-outline" onclick="loadTasteEvolution()">📈 ${currentLang === 'fr' ? 'Mon evolution' : 'My evolution'}</button>
+    </div>
+    <div id="tasteEvolutionSlot"></div>`;
+  renderWrappedCanvas({ ...data, year, favTitle, persona });
 }
+
+function renderWrappedCanvas(d) {
+  const canvas = document.getElementById('wrappedCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  // Black background
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  // Gold gradient accents
+  const grad = ctx.createRadialGradient(W/2, H*0.3, 100, W/2, H*0.3, 800);
+  grad.addColorStop(0, 'rgba(212,175,55,0.35)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+  // Seret logo
+  ctx.fillStyle = '#D4AF37';
+  ctx.font = 'bold 80px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('S', W/2, 240);
+  ctx.fillStyle = '#fff';
+  ctx.font = '40px serif';
+  ctx.fillText('seret', W/2, 300);
+
+  // Headline
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 78px serif';
+  ctx.fillText(currentLang === 'fr' ? `Mon annee cinema` : `My cinema year`, W/2, 520);
+  ctx.fillStyle = '#D4AF37';
+  ctx.font = 'bold 200px serif';
+  ctx.fillText(String(d.year), W/2, 750);
+
+  // Stats
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 120px "Helvetica Neue", sans-serif';
+  ctx.fillText(String(d.total), W/2, 970);
+  ctx.font = '34px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText(currentLang === 'fr' ? 'titres visionnes' : 'titles watched', W/2, 1020);
+
+  // Sub-stats
+  ctx.font = 'bold 60px sans-serif';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`🎥 ${d.movies}  ·  📺 ${d.shows}`, W/2, 1150);
+  ctx.font = 'bold 60px sans-serif';
+  ctx.fillStyle = '#D4AF37';
+  ctx.fillText(`⭐ ${d.avgRating}/10`, W/2, 1240);
+  ctx.fillStyle = '#fff';
+  ctx.font = '42px sans-serif';
+  ctx.fillText(`${d.fiveStars} ${currentLang === 'fr' ? 'coups de coeur' : 'favorites'}`, W/2, 1310);
+
+  // Favourite
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '30px sans-serif';
+  ctx.fillText(currentLang === 'fr' ? 'FILM PREFERE' : 'FAVORITE', W/2, 1460);
+  ctx.fillStyle = '#D4AF37';
+  ctx.font = 'bold 56px serif';
+  const maxWidth = W - 140;
+  wrapText(ctx, d.favTitle, W/2, 1530, maxWidth, 66);
+
+  // Persona
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '30px sans-serif';
+  ctx.fillText(currentLang === 'fr' ? 'MON PERSONA SERET' : 'MY SERET PERSONA', W/2, 1700);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 48px serif';
+  ctx.fillText(d.persona, W/2, 1760);
+
+  // Footer
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '28px sans-serif';
+  ctx.fillText('seret-weld.vercel.app', W/2, 1860);
+}
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = String(text).split(' ');
+  let line = '';
+  for (const w of words) {
+    const test = line + w + ' ';
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y); line = w + ' '; y += lineHeight;
+    } else { line = test; }
+  }
+  ctx.fillText(line, x, y);
+}
+
+function downloadWrappedImage() {
+  const canvas = document.getElementById('wrappedCanvas');
+  if (!canvas) return;
+  canvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `seret-wrapped-${new Date().getFullYear()}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
 function shareWrapped(d) {
   const msg = currentLang === 'fr'
     ? `🎬 Mon annee cinema sur Seret\n\n*${d.total}* titres visionnes\n🎥 ${d.movies} films · 📺 ${d.shows} series\n❤️ ${d.fiveStars} coups de coeur\n⭐ Note moyenne ${d.avgRating}/10\n\n${window.location.origin}`
     : `🎬 My cinema year on Seret\n\n*${d.total}* titles watched\n🎥 ${d.movies} movies · 📺 ${d.shows} series\n❤️ ${d.fiveStars} favorites\n⭐ Avg ${d.avgRating}/10\n\n${window.location.origin}`;
   openWhatsApp(msg);
+}
+
+async function loadTasteEvolution() {
+  const slot = document.getElementById('tasteEvolutionSlot');
+  if (!slot) return;
+  slot.innerHTML = `<div class="recs-loading" style="margin-top:20px"><div class="spinner"></div></div>`;
+  try {
+    const res = await fetch('/api/taste-evolution', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ library: library.filter(l => l.userRating > 0), lang: currentLang }),
+    });
+    const data = await res.json();
+    slot.innerHTML = data.text
+      ? `<div class="cultural-context" style="margin-top:24px"><div class="ai-section-label">${currentLang === 'fr' ? 'Ton evolution cinematographique' : 'Your cinema evolution'}</div>${esc(data.text)}</div>`
+      : '';
+  } catch { slot.innerHTML = ''; }
 }
 
 // ===== Keyboard =====
@@ -2151,6 +2345,30 @@ async function processPendingAdd() {
   }
 }
 
+
+// ===== Streaming provider deep links with utm_source=seret =====
+function providerSearchUrl(providerName, title) {
+  const q = encodeURIComponent(title);
+  const utm = 'utm_source=seret&utm_medium=app&utm_campaign=streaming';
+  const map = {
+    'Netflix': `https://www.netflix.com/search?q=${q}&${utm}`,
+    'Amazon Prime Video': `https://www.primevideo.com/search?phrase=${q}&${utm}`,
+    'Amazon Video': `https://www.primevideo.com/search?phrase=${q}&${utm}`,
+    'Disney Plus': `https://www.disneyplus.com/search?q=${q}&${utm}`,
+    'Disney+': `https://www.disneyplus.com/search?q=${q}&${utm}`,
+    'Apple TV Plus': `https://tv.apple.com/search?term=${q}&${utm}`,
+    'Apple TV+': `https://tv.apple.com/search?term=${q}&${utm}`,
+    'Apple TV': `https://tv.apple.com/search?term=${q}&${utm}`,
+    'HBO Max': `https://www.hbomax.com/search?q=${q}&${utm}`,
+    'Max': `https://www.max.com/search?q=${q}&${utm}`,
+    'Paramount Plus': `https://www.paramountplus.com/search/?q=${q}&${utm}`,
+    'Paramount+': `https://www.paramountplus.com/search/?q=${q}&${utm}`,
+    'Hulu': `https://www.hulu.com/search?q=${q}&${utm}`,
+    'Canal+': `https://www.canalplus.com/recherche/?q=${q}&${utm}`,
+    'MyCanal': `https://www.canalplus.com/recherche/?q=${q}&${utm}`,
+  };
+  return map[providerName] || `https://www.google.com/search?q=${q}+${encodeURIComponent(providerName)}&${utm}`;
+}
 
 // ============================================================
 //   Feature extensions — Tonight, Semantic, Chat, Voice, etc.
