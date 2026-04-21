@@ -136,6 +136,18 @@ const i18n = {
     sign_in_with_facebook: 'Continue with Facebook',
     sign_in_with_phone: 'Continue with phone',
     or_with_email: 'or email',
+    settings_title: 'Settings',
+    culture_label: 'Cultural background (optional)', culture_none: 'None',
+    culture_jewish: 'Jewish', culture_muslim: 'Muslim', culture_christian: 'Christian',
+    seasonal_toggle: 'Seasonal banner on home',
+    shabbat_toggle: 'Shabbat mode (no notifications Friday evening / Saturday)',
+    tsniout_toggle: 'Modest content filter (tsniout)',
+    delete_account: 'Delete my account',
+    delete_confirm: 'This action cannot be undone. Export your data first if needed. Continue?',
+    world_cinema: 'World Cinema Map',
+    world_sub: 'Travel cinematically — pick a country',
+    challenge_title: 'Monthly challenge',
+    child_age_label: 'Child age', child_age_helper: 'Filters content by age rating',
   },
   fr: {
     search_placeholder: 'Rechercher films & series...',
@@ -246,6 +258,18 @@ const i18n = {
     sign_in_with_facebook: 'Continuer avec Facebook',
     sign_in_with_phone: 'Continuer avec telephone',
     or_with_email: 'ou par email',
+    settings_title: 'Reglages',
+    culture_label: 'Culture (optionnel)', culture_none: 'Aucune',
+    culture_jewish: 'Juif', culture_muslim: 'Musulman', culture_christian: 'Chretien',
+    seasonal_toggle: 'Banniere saisonniere sur l\'accueil',
+    shabbat_toggle: 'Mode Shabbat (pas de notifs vendredi soir / samedi)',
+    tsniout_toggle: 'Filtre de contenu tsniout',
+    delete_account: 'Supprimer mon compte',
+    delete_confirm: 'Cette action est irreversible. Exporte tes donnees avant si besoin. Continuer ?',
+    world_cinema: 'Carte du cinema mondial',
+    world_sub: 'Voyage cinematographique — choisis un pays',
+    challenge_title: 'Defi du mois',
+    child_age_label: 'Age de l\'enfant', child_age_helper: 'Filtre le contenu selon l\'age',
   }
 };
 const t = k => i18n[currentLang]?.[k] || i18n.en[k] || k;
@@ -794,6 +818,7 @@ function openProfilePicker() {
       ${activeProfile ? `<button class="btn btn-glass btn-sm" onclick="closeOnboarding()">${t('back')}</button>` : ''}
       <button class="btn btn-outline btn-sm" onclick="toggleLang()">${langOther}</button>
       <button class="btn btn-outline btn-sm" onclick="showStatsMenu();closeOnboarding()">🏆 ${t('your_stats')}</button>
+      <button class="btn btn-outline btn-sm" onclick="openSettings()">⚙ ${t('settings_title')}</button>
       <button class="btn btn-outline btn-sm" onclick="confirmSignOut()">${t('sign_out')}</button>
     </div>
   `;
@@ -2734,10 +2759,164 @@ onAuthChange = async function () {
   checkWatchlistReminders();
 };
 
+// ===== Settings modal (culture, shabbat, tsniout, delete account) =====
+function openSettingsModal() {
+  document.getElementById('settingsModal').classList.add('active');
+  renderSettings();
+}
+function closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
+function renderSettings() {
+  const body = document.getElementById('settingsBody');
+  const culture = localStorage.getItem('seret-culture') || '';
+  const seasonalOn = localStorage.getItem('seret-seasonal-disabled') !== '1';
+  const shabbatOn = localStorage.getItem('seret-shabbat') === '1';
+  const tsniout = localStorage.getItem('seret-tsniout') === '1';
+  body.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:18px;margin-top:14px">
+      <div>
+        <label style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">${t('culture_label')}</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          ${['','jewish','muslim','christian'].map(c => `
+            <button class="btn btn-sm ${culture === c ? 'btn-primary' : 'btn-glass'}" onclick="setCulture('${c}')">
+              ${c === '' ? t('culture_none') : t('culture_' + c)}
+            </button>`).join('')}
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" ${seasonalOn ? 'checked' : ''} onchange="toggleSetting('seret-seasonal-disabled', !this.checked ? '1' : '0')">
+        <span>${t('seasonal_toggle')}</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" ${shabbatOn ? 'checked' : ''} onchange="toggleSetting('seret-shabbat', this.checked ? '1' : '0')">
+        <span>${t('shabbat_toggle')}</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" ${tsniout ? 'checked' : ''} onchange="toggleSetting('seret-tsniout', this.checked ? '1' : '0')">
+        <span>${t('tsniout_toggle')}</span>
+      </label>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:8px">
+        <button class="btn btn-danger" style="width:100%" onclick="deleteAccount()">${t('delete_account')}</button>
+      </div>
+    </div>`;
+}
+function setCulture(c) { localStorage.setItem('seret-culture', c); renderSettings(); loadSeasonalBanner(); }
+function toggleSetting(key, value) {
+  localStorage.setItem(key, value);
+  if (key === 'seret-seasonal-disabled') loadSeasonalBanner();
+}
+async function deleteAccount() {
+  if (!confirm(t('delete_confirm'))) return;
+  if (sb && currentUser) {
+    try {
+      // Best-effort: delete user-scoped data. Supabase auth.admin.deleteUser requires service role; fallback: sign out + ask support.
+      await sb.from('library_items').delete().eq('user_id', currentUser.id);
+      await sb.from('user_profiles').delete().eq('account_id', currentUser.id);
+      await sb.from('user_stats').delete().eq('user_id', currentUser.id);
+      await sb.from('friendships').delete().or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`);
+      await sb.from('stories').delete().eq('user_id', currentUser.id);
+    } catch (e) { console.warn(e); }
+    window.location.href = 'mailto:kouty@elevon.fr?subject=Delete%20my%20Seret%20account&body=Please%20delete%20my%20account%20linked%20to%20' + encodeURIComponent(currentUser.email || '');
+    signOut();
+  }
+}
+
+// ===== World cinema map (list of countries) =====
+const WORLD_COUNTRIES = [
+  { code: 'FR', name: 'France', flag: '🇫🇷' },
+  { code: 'US', name: 'USA', flag: '🇺🇸' },
+  { code: 'KR', name: currentLang === 'fr' ? 'Corée du Sud' : 'South Korea', flag: '🇰🇷' },
+  { code: 'JP', name: currentLang === 'fr' ? 'Japon' : 'Japan', flag: '🇯🇵' },
+  { code: 'IN', name: currentLang === 'fr' ? 'Inde' : 'India', flag: '🇮🇳' },
+  { code: 'IT', name: currentLang === 'fr' ? 'Italie' : 'Italy', flag: '🇮🇹' },
+  { code: 'ES', name: currentLang === 'fr' ? 'Espagne' : 'Spain', flag: '🇪🇸' },
+  { code: 'DE', name: currentLang === 'fr' ? 'Allemagne' : 'Germany', flag: '🇩🇪' },
+  { code: 'GB', name: currentLang === 'fr' ? 'Royaume-Uni' : 'UK', flag: '🇬🇧' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+  { code: 'BR', name: currentLang === 'fr' ? 'Brésil' : 'Brazil', flag: '🇧🇷' },
+  { code: 'AR', name: 'Argentina', flag: '🇦🇷' },
+  { code: 'IL', name: currentLang === 'fr' ? 'Israël' : 'Israel', flag: '🇮🇱' },
+  { code: 'IR', name: currentLang === 'fr' ? 'Iran' : 'Iran', flag: '🇮🇷' },
+  { code: 'CN', name: currentLang === 'fr' ? 'Chine' : 'China', flag: '🇨🇳' },
+  { code: 'TH', name: currentLang === 'fr' ? 'Thaïlande' : 'Thailand', flag: '🇹🇭' },
+  { code: 'NG', name: 'Nigeria', flag: '🇳🇬' },
+  { code: 'SE', name: currentLang === 'fr' ? 'Suède' : 'Sweden', flag: '🇸🇪' },
+  { code: 'RU', name: currentLang === 'fr' ? 'Russie' : 'Russia', flag: '🇷🇺' },
+  { code: 'TR', name: currentLang === 'fr' ? 'Turquie' : 'Turkey', flag: '🇹🇷' },
+];
+function renderWorldCinemaStrip() {
+  // Inject into Home at bottom (after activity feed)
+  const slot = document.getElementById('worldCinemaSlot');
+  if (!slot) return;
+  slot.innerHTML = `
+    <h2 class="section-title" style="margin-top:40px">🌍 ${t('world_cinema')}</h2>
+    <p class="section-sub">${t('world_sub')}</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;padding:8px 0 16px">
+      ${WORLD_COUNTRIES.map(c => `<button class="btn btn-glass btn-sm" onclick="loadCountryFilms('${c.code}', ${JSON.stringify(esc(c.name))})">${c.flag} ${esc(c.name)}</button>`).join('')}
+    </div>
+    <div id="worldCountryResults"></div>`;
+}
+async function loadCountryFilms(code, name) {
+  const slot = document.getElementById('worldCountryResults');
+  slot.innerHTML = `<div class="recs-loading"><div class="spinner"></div></div>`;
+  try {
+    const res = await fetch(`/api/world-cinema?country=${code}&lang=${currentLang === 'fr' ? 'fr-FR' : 'en-US'}`);
+    const data = await res.json();
+    slot.innerHTML = `
+      <h3 class="friends-section-title">${name}</h3>
+      <div class="grid">${(data.results || []).map(r => trendingCardHTML(r)).filter(Boolean).join('')}</div>`;
+  } catch (e) { slot.innerHTML = ''; }
+}
+
+// ===== Monthly challenge banner =====
+async function loadChallenge() {
+  try {
+    const res = await fetch(`/api/challenge?lang=${currentLang}`);
+    const data = await res.json();
+    const slot = document.getElementById('challengeSlot');
+    if (!slot) return;
+    slot.innerHTML = `
+      <div class="seasonal-banner" style="border-left-color:#ff6b6b">
+        <div class="seasonal-emoji">🏆</div>
+        <div style="flex:1">
+          <div class="seasonal-title">${t('challenge_title')} — ${esc(data.title)}</div>
+          <div class="seasonal-sub">${esc(data.sub)}</div>
+        </div>
+      </div>`;
+  } catch {}
+}
+
+// Expose world & challenge loaders to home init
+function loadHomeExtras() {
+  renderWorldCinemaStrip();
+  loadChallenge();
+}
+
+// Inject slots into Home (done once after DOM is ready)
+function injectHomeSlots() {
+  const home = document.getElementById('homeView')?.querySelector('.section');
+  if (!home) return;
+  if (!document.getElementById('challengeSlot')) {
+    const div = document.createElement('div');
+    div.id = 'challengeSlot';
+    // Insert after seasonalBanner
+    document.getElementById('seasonalBanner').after(div);
+  }
+  if (!document.getElementById('worldCinemaSlot')) {
+    const div = document.createElement('div');
+    div.id = 'worldCinemaSlot';
+    home.appendChild(div);
+  }
+  loadHomeExtras();
+}
+
+// Hook settings into profile picker actions (button added in-place when called)
+function openSettings() { closeOnboarding(); openSettingsModal(); }
+
 // ===== Init =====
 applyLang();
 capturePendingAddFromURL();
 loadTrending();
 loadSeasonalBanner().catch(() => {});
+injectHomeSlots();
 initSupabase();
 checkReminder();

@@ -348,6 +348,17 @@
     </div>
   </div>
 
+  <!-- Settings modal (culture, seasonal, language, delete account) -->
+  <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettingsModal()">
+    <div class="modal-content auth-modal-content">
+      <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+      <div class="auth-modal-body">
+        <h2 class="auth-title" data-i18n="settings_title">Settings</h2>
+        <div id="settingsBody"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Tonight wizard modal -->
   <div id="tonightModal" class="modal" onclick="if(event.target===this)closeTonightWizard()">
     <div class="modal-content auth-modal-content">

@@ -636,6 +636,43 @@ app.post('/api/wrapped', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== World cinema — films from a given country =====
+app.get('/api/world-cinema', async (req, res) => {
+  const { country = 'FR', lang = 'en-US' } = req.query;
+  if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
+  try {
+    const data = await tmdbFetch('/discover/movie', {
+      language: lang, sort_by: 'popularity.desc',
+      with_origin_country: country, include_adult: 'false',
+      'vote_count.gte': 100,
+    });
+    const results = (data.results || []).filter(isAppropriate).map(r => ({ ...mapItem(r), type: 'movie' }));
+    res.json({ results: results.slice(0, 24) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Monthly challenge (deterministic from current month) =====
+app.get('/api/challenge', (req, res) => {
+  const { lang = 'en' } = req.query;
+  const month = new Date().getMonth() + 1;
+  const fr = lang === 'fr';
+  const challenges = [
+    { key: 'jan', title: fr ? 'Un film de chaque continent' : 'One film from each continent', sub: fr ? '6 continents, 6 films' : '6 continents, 6 films' },
+    { key: 'feb', title: fr ? 'Romance hors-sentier' : 'Romance off the beaten path', sub: fr ? 'Pas de rom-com US' : 'No US romcoms' },
+    { key: 'mar', title: fr ? 'Cinema de femmes' : 'Cinema by women directors', sub: fr ? '5 films realises par des femmes' : '5 films directed by women' },
+    { key: 'apr', title: fr ? 'Documentaires' : 'Documentaries', sub: fr ? '3 docs cette semaine' : '3 docs this week' },
+    { key: 'may', title: fr ? 'Animation adulte' : 'Adult animation', sub: fr ? 'Pas que pour les enfants' : 'Not just for kids' },
+    { key: 'jun', title: fr ? 'Films de moins de 90 minutes' : 'Under 90 min', sub: fr ? 'Concision appreciee' : 'Short and sharp' },
+    { key: 'jul', title: fr ? 'Blockbuster oublie' : 'Forgotten blockbusters', sub: fr ? 'Annees 80-90' : '80s-90s' },
+    { key: 'aug', title: fr ? 'Cinema asiatique' : 'Asian cinema', sub: fr ? 'Japon Coree HK' : 'Japan Korea HK' },
+    { key: 'sep', title: fr ? 'Un classique par decennie' : 'One classic per decade', sub: fr ? '50s 60s 70s 80s 90s' : '50s 60s 70s 80s 90s' },
+    { key: 'oct', title: fr ? 'Horreur intelligente' : 'Smart horror', sub: fr ? 'Pas que du jumpscare' : 'No cheap jumpscares' },
+    { key: 'nov', title: fr ? 'Biopic' : 'Biopic', sub: fr ? 'Personnages reels' : 'Real figures' },
+    { key: 'dec', title: fr ? 'Feel-good de fin d\'annee' : 'Year-end feel-good', sub: fr ? 'Pour finir l\'annee tranquille' : 'Close the year calmly' },
+  ];
+  res.json({ ...challenges[month - 1], month });
+});
+
 // ===== Legal pages =====
 function legalPage(title, bodyFr, bodyEn) {
   return `<!doctype html>
