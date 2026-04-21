@@ -134,7 +134,7 @@ function callClaude(messages, maxTokens = 2000, system = null) {
   return new Promise((resolve, reject) => {
     if (!CLAUDE_API_KEY) return reject(new Error('Seret AI not configured'));
     const payload = {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
       messages: Array.isArray(messages) ? messages : [{ role: 'user', content: messages }],
     };
