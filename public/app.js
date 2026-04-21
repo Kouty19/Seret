@@ -148,6 +148,15 @@ const i18n = {
     world_sub: 'Travel cinematically — pick a country',
     challenge_title: 'Monthly challenge',
     child_age_label: 'Child age', child_age_helper: 'Filters content by age rating',
+    nav_learn: 'Learn', learn_title: 'Learn with Seret', learn_sub: 'Cinema for growing — by theme and by age',
+    learn_custom: 'Custom educational search', learn_ph: 'A film that teaches philosophy to a teen...',
+    learn_lang: 'Foreign language', learn_sci: 'Science & nature', learn_math: 'Math & logic',
+    learn_hist: 'History & culture', learn_biz: 'Business & leadership', learn_kids: 'For kids',
+    level_beginner: 'Beginner', level_intermediate: 'Intermediate', level_advanced: 'Advanced', level_any: 'Any level',
+    age_3_6: '3-6 y', age_7_10: '7-10 y', age_11_14: '11-14 y',
+    push_enable: 'Enable notifications', push_enabled: 'Notifications enabled',
+    push_new_season: 'New season available',
+    cinema_night: 'Cinema Night', create_poll: 'Create a poll',
   },
   fr: {
     search_placeholder: 'Rechercher films & series...',
@@ -270,6 +279,15 @@ const i18n = {
     world_sub: 'Voyage cinematographique — choisis un pays',
     challenge_title: 'Defi du mois',
     child_age_label: 'Age de l\'enfant', child_age_helper: 'Filtre le contenu selon l\'age',
+    nav_learn: 'Apprendre', learn_title: 'Apprendre avec Seret', learn_sub: 'Du cinema pour grandir — par theme et par age',
+    learn_custom: 'Recherche educative personnalisee', learn_ph: 'Un film qui apprend la philo a un ado...',
+    learn_lang: 'Langue etrangere', learn_sci: 'Sciences et nature', learn_math: 'Maths et logique',
+    learn_hist: 'Histoire et culture', learn_biz: 'Business et leadership', learn_kids: 'Pour enfants',
+    level_beginner: 'Debutant', level_intermediate: 'Intermediaire', level_advanced: 'Avance', level_any: 'Tous niveaux',
+    age_3_6: '3-6 ans', age_7_10: '7-10 ans', age_11_14: '11-14 ans',
+    push_enable: 'Activer les notifications', push_enabled: 'Notifications activees',
+    push_new_season: 'Nouvelle saison disponible',
+    cinema_night: 'Soiree cinema', create_poll: 'Creer un sondage',
   }
 };
 const t = k => i18n[currentLang]?.[k] || i18n.en[k] || k;
@@ -1919,6 +1937,7 @@ function showHome() { setActiveNav('home'); document.getElementById('homeView').
 function showLibrary() { setActiveNav('library'); document.getElementById('libraryView').classList.add('active'); renderLibrary(); }
 function showRecommend() { setActiveNav('recommend'); document.getElementById('recommendView').classList.add('active'); }
 function showWrapped() { setActiveNav('wrapped'); document.getElementById('wrappedView').classList.add('active'); }
+function showLearn() { setActiveNav('learn'); document.getElementById('learnView').classList.add('active'); renderLearnCategories(); }
 function showFriends() {
   setActiveNav('friends');
   document.getElementById('friendsView').classList.add('active');
@@ -2911,6 +2930,195 @@ function injectHomeSlots() {
 
 // Hook settings into profile picker actions (button added in-place when called)
 function openSettings() { closeOnboarding(); openSettingsModal(); }
+
+// ===== Learn view (educational) =====
+const LEARN_CATEGORIES = [
+  { key: 'language', emoji: '🌍', label: 'learn_lang' },
+  { key: 'science', emoji: '🔬', label: 'learn_sci' },
+  { key: 'math', emoji: '📐', label: 'learn_math' },
+  { key: 'history', emoji: '📚', label: 'learn_hist' },
+  { key: 'business', emoji: '💼', label: 'learn_biz' },
+  { key: 'kids', emoji: '👶', label: 'learn_kids' },
+];
+function renderLearnCategories() {
+  const el = document.getElementById('learnCategories');
+  if (!el) return;
+  el.innerHTML = LEARN_CATEGORIES.map(c => `
+    <button class="learn-cat" onclick="openLearnCategory('${c.key}')">
+      <div class="learn-cat-emoji">${c.emoji}</div>
+      <div class="learn-cat-label">${t(c.label)}</div>
+    </button>`).join('');
+}
+function openLearnCategory(key) {
+  const results = document.getElementById('learnResults');
+  const isKids = key === 'kids';
+  // Levels / age range selector
+  results.innerHTML = `
+    <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+      ${isKids ? `
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', null, '3-6')">${t('age_3_6')}</button>
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', null, '7-10')">${t('age_7_10')}</button>
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', null, '11-14')">${t('age_11_14')}</button>
+      ` : `
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', 'beginner')">${t('level_beginner')}</button>
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', 'intermediate')">${t('level_intermediate')}</button>
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', 'advanced')">${t('level_advanced')}</button>
+        <button class="btn btn-glass btn-sm" onclick="runLearnQuery('${key}', 'any')">${t('level_any')}</button>
+      `}
+    </div>
+    <div id="learnPicks"></div>`;
+}
+async function runLearnQuery(category, level, ageRange) {
+  const slot = document.getElementById('learnPicks');
+  slot.innerHTML = `<div class="recs-loading"><div class="spinner"></div> ${t('loading_recs')}</div>`;
+  try {
+    const res = await fetch('/api/learn', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, level, ageRange, lang: currentLang }),
+    });
+    const data = await res.json();
+    const recs = data.recommendations || [];
+    slot.innerHTML = `<div class="ai-recs-grid">${recs.map(r => learnRecCard(r)).join('')}</div>`;
+  } catch (e) { slot.innerHTML = `<div style="color:var(--danger)">${e.message}</div>`; }
+}
+async function runLearnCustomQuery() {
+  const query = document.getElementById('learnQueryInput').value.trim();
+  if (!query) return;
+  const slot = document.getElementById('learnResults');
+  slot.innerHTML = `<div class="recs-loading"><div class="spinner"></div> ${t('loading_recs')}</div>`;
+  try {
+    const res = await fetch('/api/learn', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: 'custom', query, lang: currentLang }),
+    });
+    const data = await res.json();
+    const recs = data.recommendations || [];
+    slot.innerHTML = `<div class="ai-recs-grid">${recs.map(r => learnRecCard(r)).join('')}</div>`;
+  } catch (e) { slot.innerHTML = `<div style="color:var(--danger)">${e.message}</div>`; }
+}
+function learnRecCard(r) {
+  return `
+    <div class="ai-rec-card">
+      ${r.poster ? `<img class="ai-rec-poster" src="${r.poster}" onclick="openDetail('${r.type || 'movie'}', ${r.tmdb_id || 0})">` : '<div class="ai-rec-poster-empty">🎓</div>'}
+      <div class="ai-rec-body">
+        <div class="ai-rec-title">${esc(r.title)} <span class="ai-rec-year">(${r.year})</span></div>
+        ${r.level ? `<div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:4px 0">${esc(r.level)}</div>` : ''}
+        <div class="ai-rec-reason">${esc(r.reason || '')}</div>
+        ${r.skills?.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${r.skills.map(s => `<span class="genre-tag" style="font-size:10px">${esc(s)}</span>`).join('')}</div>` : ''}
+        ${r.tmdb_id ? `<button class="btn btn-primary btn-sm" style="align-self:flex-start;margin-top:8px" onclick='addAIRec(${JSON.stringify(r).replace(/'/g, "&#39;")}, this)'>+ ${t('to_watch')}</button>` : ''}
+      </div>
+    </div>`;
+}
+
+// ===== Web Push notifications =====
+async function enablePushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast(currentLang === 'fr' ? 'Notifications non supportees par ce navigateur' : 'Notifications not supported on this browser');
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { showToast('Permission refused'); return; }
+    const res = await fetch('/api/vapid-public-key');
+    const { key } = await res.json();
+    if (!key) { showToast(currentLang === 'fr' ? 'VAPID non configure sur le serveur' : 'VAPID not configured on server'); return; }
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key),
+    });
+    if (sb && currentUser) {
+      await sb.from('push_subscriptions').upsert({
+        user_id: currentUser.id,
+        endpoint: sub.endpoint,
+        p256dh: arrayBufferToBase64(sub.getKey('p256dh')),
+        auth: arrayBufferToBase64(sub.getKey('auth')),
+      }, { onConflict: 'endpoint' });
+    }
+    showToast(t('push_enabled'));
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+function urlBase64ToUint8Array(b64) {
+  const padding = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let str = '';
+  for (const b of bytes) str += String.fromCharCode(b);
+  return btoa(str);
+}
+// Register service worker silently at boot (for the navigate offline shell)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+// ===== Cinema Night — group vote poll =====
+async function createCinemaNightPoll(candidates) {
+  if (!sb || !currentUser || candidates.length < 2) { showToast(t('pick_friends')); return null; }
+  const { data, error } = await sb.from('cinema_polls').insert({
+    creator_id: currentUser.id,
+    candidates: candidates, // jsonb
+    ends_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min
+  }).select().single();
+  if (error) { showToast(error.message); return null; }
+  const url = `${window.location.origin}/?poll=${data.id}`;
+  const msg = currentLang === 'fr'
+    ? `🎬 Soiree cinema ! Vote pour le film a regarder :\n${url}`
+    : `🎬 Cinema night! Vote for tonight's film:\n${url}`;
+  openWhatsApp(msg);
+  return data;
+}
+async function voteCinemaNightPoll(pollId, candidateIndex) {
+  if (!sb || !currentUser) return;
+  await sb.from('cinema_votes').upsert({
+    poll_id: pollId, user_id: currentUser.id, candidate_index: candidateIndex,
+  }, { onConflict: 'poll_id,user_id' });
+  showToast('✓');
+}
+async function loadCinemaNightPoll(pollId) {
+  if (!sb) return;
+  const { data: poll } = await sb.from('cinema_polls').select('*').eq('id', pollId).single();
+  if (!poll) return;
+  const { data: votes } = await sb.from('cinema_votes').select('candidate_index').eq('poll_id', pollId);
+  const counts = new Array(poll.candidates.length).fill(0);
+  (votes || []).forEach(v => counts[v.candidate_index] = (counts[v.candidate_index] || 0) + 1);
+  // Render inside detail modal for simplicity
+  const modal = document.getElementById('detailModal');
+  const body = document.getElementById('modalBody');
+  body.innerHTML = `
+    <button class="modal-back-btn" onclick="closeModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <div class="modal-info" style="padding-top:48px">
+      <div class="modal-title">🎬 ${t('cinema_night')}</div>
+      <p class="section-sub">${currentLang === 'fr' ? 'Choisis le film qu\'on regarde ce soir' : 'Pick tonight\'s film'}</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:20px">
+        ${poll.candidates.map((c, idx) => `
+          <button class="btn btn-glass" style="text-align:left;padding:14px;height:auto" onclick="voteCinemaNightPoll(${pollId}, ${idx}).then(() => loadCinemaNightPoll(${pollId}))">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+              <span style="font-size:16px;font-weight:600">${esc(c.title)} <span style="color:var(--text-dim)">(${c.year})</span></span>
+              <span style="color:var(--gold);font-weight:700">${counts[idx]} ${currentLang === 'fr' ? 'votes' : 'votes'}</span>
+            </div>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  modal.classList.add('active');
+}
+
+// Intercept ?poll=<id> on URL
+(function captureCinemaPollFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const pollId = params.get('poll');
+  if (pollId) {
+    window.history.replaceState({}, '', window.location.pathname);
+    setTimeout(() => loadCinemaNightPoll(Number(pollId)), 800);
+  }
+})();
 
 // ===== Init =====
 applyLang();

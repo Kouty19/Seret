@@ -636,6 +636,38 @@ app.post('/api/wrapped', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Educational recommendations =====
+app.post('/api/learn', async (req, res) => {
+  const { category, level = 'any', ageRange = null, query = '', lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const catMap = {
+    language: lang === 'fr' ? 'apprendre une langue etrangere' : 'learn a foreign language',
+    science: lang === 'fr' ? 'sciences et nature' : 'science and nature',
+    math: lang === 'fr' ? 'maths et logique' : 'math and logic',
+    history: lang === 'fr' ? 'histoire et culture' : 'history and culture',
+    business: lang === 'fr' ? 'business et leadership' : 'business and leadership',
+    kids: lang === 'fr' ? 'enfants' : 'kids',
+  };
+  const ageHint = ageRange ? (lang === 'fr' ? ` pour enfants de ${ageRange} ans` : ` for kids aged ${ageRange}`) : '';
+  const prompt = lang === 'fr'
+    ? `Propose 5 films/series/documentaires educatifs sur "${catMap[category] || category}"${ageHint}, niveau ${level}. ${query ? 'Precision: ' + query : ''}\n\nSTRICT JSON:\n{"recommendations":[{"title":"exact","year":"YYYY","type":"movie ou tv","reason":"ce qu'on apprend, 1 phrase","level":"debutant/intermediaire/avance","skills":["compétence1","compétence2"]}]}\nUniquement contenu approprie (pas d'horreur, pas de scenes adultes). JSON uniquement.`
+    : `Propose 5 educational films/shows/docs on "${catMap[category] || category}"${ageHint}, level ${level}. ${query ? 'Detail: ' + query : ''}\n\nSTRICT JSON:\n{"recommendations":[{"title":"exact","year":"YYYY","type":"movie or tv","reason":"what you learn, 1 sentence","level":"beginner/intermediate/advanced","skills":["skill1","skill2"]}]}\nOnly appropriate content (no horror, no adult scenes). JSON only.`;
+  try {
+    const text = await callClaude(prompt, 1500);
+    const parsed = parseJSON(text);
+    const enriched = await Promise.all((parsed.recommendations || []).map(r => enrichWithTMDB(r, lang)));
+    // Preserve educational meta fields from the parsed recs (enrichWithTMDB overwrites some fields)
+    const merged = enriched.map((e, i) => ({ ...e, level: parsed.recommendations[i]?.level, skills: parsed.recommendations[i]?.skills }));
+    res.json({ recommendations: merged });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Web Push VAPID public key (client subscribes with it) =====
+app.get('/api/vapid-public-key', (req, res) => {
+  const key = process.env.VAPID_PUBLIC_KEY || '';
+  res.json({ key });
+});
+
 // ===== World cinema — films from a given country =====
 app.get('/api/world-cinema', async (req, res) => {
   const { country = 'FR', lang = 'en-US' } = req.query;

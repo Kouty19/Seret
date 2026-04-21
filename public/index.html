@@ -45,6 +45,7 @@
         <button class="nav-btn" data-view="library" onclick="showLibrary()"><span data-i18n="nav_library">Library</span></button>
         <button class="nav-btn" data-view="friends" onclick="showFriends()"><span data-i18n="nav_friends">Friends</span></button>
         <button class="nav-btn" data-view="recommend" onclick="showRecommend()"><span data-i18n="nav_ai">Seret AI</span></button>
+        <button class="nav-btn" data-view="learn" onclick="showLearn()"><span data-i18n="nav_learn">Apprendre</span></button>
         <button class="nav-btn" data-view="wrapped" onclick="showWrapped()"><span data-i18n="nav_wrapped">Wrapped</span></button>
         <button class="icon-btn" onclick="openCameraModal()" title="Scan">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -216,6 +217,23 @@
         </div>
 
         <div id="recsContent" style="margin-top:32px"></div>
+      </div>
+    </section>
+
+    <!-- Learn (educational) -->
+    <section id="learnView" class="view">
+      <div class="section">
+        <h2 class="section-title" data-i18n="learn_title">Apprendre avec Seret</h2>
+        <p class="section-sub" data-i18n="learn_sub">Du cinéma pour grandir — par thème et par âge</p>
+        <div class="learn-categories" id="learnCategories"></div>
+        <div class="semantic-search-wrap" style="margin-top:24px">
+          <div class="semantic-search-label" data-i18n="learn_custom">Recherche éducative personnalisée</div>
+          <div class="semantic-search-row">
+            <input type="text" id="learnQueryInput" data-i18n-placeholder="learn_ph" placeholder="Un film qui apprend la philosophie à un ado...">
+            <button class="btn btn-gold" onclick="runLearnCustomQuery()" data-i18n="semantic_go">Chercher</button>
+          </div>
+        </div>
+        <div id="learnResults" style="margin-top:20px"></div>
       </div>
     </section>
 
@@ -432,6 +450,6 @@
     <div>This product uses the TMDB API but is not endorsed or certified by TMDB.</div>
   </footer>
 
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>
