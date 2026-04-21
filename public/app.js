@@ -885,7 +885,10 @@ function rateItem(id, type, rating) {
   if (old < 9 && rating >= 9) {
     awardPoints(20);
     showWhatsAppSharePrompt(item);
+    if (rating >= 8) publishStory(item); // 24h story for friends
   }
+  // AI explanation — flatter the user with a personalised insight
+  if (rating > 0 && old !== rating) explainUserRating(item);
   renderLibrary();
 }
 
@@ -1214,6 +1217,8 @@ async function openDetail(type, id) {
         </div>
         <div id="trailerSlot"></div>
         <div id="culturalSlot"></div>
+        <div id="friendRatingsSlot"></div>
+        <div id="predictionSlot"></div>
         ${currentUser && existing ? `
           <div class="journal-box prominent">
             <div class="journal-label">${t('your_review')} — ${t('journal_label')}</div>
@@ -1242,9 +1247,86 @@ async function openDetail(type, id) {
         }).join('')}</div>` : ''}
       </div>`;
     window._modalItem = itemForLib;
+    // Async: friends who watched + AI rating prediction (fire and forget, fill when ready)
+    loadFriendRatingsForItem(d.id, type).catch(() => {});
+    if (!existing || !existing.userRating) loadRatingPrediction(title, year, type).catch(() => {});
   } catch (e) {
     body.innerHTML = `<div style="padding:48px;text-align:center;color:var(--danger)">Error loading details</div>`;
   }
+}
+
+// ===== Friends who watched this film (with their ratings) =====
+async function loadFriendRatingsForItem(tmdbId, type) {
+  const slot = document.getElementById('friendRatingsSlot');
+  if (!slot || !sb || !currentUser || friendsData.length === 0) return;
+  const friendIds = friendsData.map(f => f.id);
+  const { data, error } = await sb.from('library_items')
+    .select('user_id, user_rating, profile_id, comment')
+    .in('user_id', friendIds)
+    .eq('tmdb_id', tmdbId).eq('media_type', type)
+    .gt('user_rating', 0);
+  if (error || !data || !data.length) return;
+  // Dedupe by friend, keep the highest rating across their sub-profiles
+  const byFriend = new Map();
+  for (const row of data) {
+    const prev = byFriend.get(row.user_id);
+    if (!prev || (row.user_rating || 0) > (prev.user_rating || 0)) byFriend.set(row.user_id, row);
+  }
+  const entries = [...byFriend.entries()].map(([fid, row]) => {
+    const friend = friendsData.find(f => f.id === fid);
+    return { name: friend?.name || '?', rating: row.user_rating, comment: row.comment };
+  });
+  if (!entries.length) return;
+  const avg = (entries.reduce((s, e) => s + e.rating, 0) / entries.length).toFixed(1);
+  slot.innerHTML = `
+    <div class="friend-ratings">
+      <div class="ai-section-label">${currentLang === 'fr' ? 'Tes amis ont vu ce film' : 'Your friends watched it'}</div>
+      <div class="friend-ratings-row">
+        ${entries.map(e => `<span class="friend-rating-chip"><span class="friend-rating-name">${esc(e.name)}</span><span class="friend-rating-score">${e.rating}/10</span></span>`).join('')}
+      </div>
+      <div class="friend-ratings-avg">${currentLang === 'fr' ? 'Moyenne amis' : 'Friend avg'} <strong>${avg}/10</strong></div>
+    </div>`;
+}
+
+// ===== AI rating prediction for unseen films =====
+async function loadRatingPrediction(title, year, type) {
+  const slot = document.getElementById('predictionSlot');
+  if (!slot) return;
+  const watched = library.filter(l => (l.status || 'watched') === 'watched' && l.userRating > 0);
+  if (watched.length < 5) return; // Need a signal to predict from
+  slot.innerHTML = `<div class="prediction-box"><div class="recs-loading"><div class="spinner"></div> ${currentLang === 'fr' ? 'Seret AI predit ta note...' : 'Seret AI predicts your rating...'}</div></div>`;
+  try {
+    const res = await fetch('/api/predict-rating', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, year, type, library: watched.slice(0, 30), lang: currentLang }),
+    });
+    const data = await res.json();
+    if (data.prediction && data.reason) {
+      slot.innerHTML = `
+        <div class="prediction-box">
+          <div class="ai-section-label">${currentLang === 'fr' ? 'Prediction Seret AI' : 'Seret AI prediction'}</div>
+          <div class="prediction-score">${data.prediction}<span class="prediction-score-max">/10</span></div>
+          <div class="prediction-reason">${esc(data.reason)}</div>
+        </div>`;
+    } else { slot.innerHTML = ''; }
+  } catch { slot.innerHTML = ''; }
+}
+
+// ===== AI rating explanation after the user rates =====
+async function explainUserRating(item) {
+  try {
+    const watched = library.filter(l => (l.status || 'watched') === 'watched' && l.userRating > 0 && l.id !== item.id);
+    if (watched.length < 5) return;
+    const res = await fetch('/api/explain-rating', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: item.title, year: item.year, rating: item.userRating,
+        library: watched.slice(0, 30), lang: currentLang,
+      }),
+    });
+    const data = await res.json();
+    if (data.text) showToast(data.text, 5000);
+  } catch {}
 }
 function toggleTrailer(key) {
   const slot = document.getElementById('trailerSlot');
@@ -1932,13 +2014,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ===== Toast =====
-function showToast(msg) {
+function showToast(msg, duration = 2200) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = '0.4s'; }, 2200);
-  setTimeout(() => t.remove(), 2700);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = '0.4s'; }, duration);
+  setTimeout(() => t.remove(), duration + 500);
 }
 
 // ===== Utility =====

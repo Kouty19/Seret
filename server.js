@@ -266,9 +266,21 @@ app.post('/api/recommend', async (req, res) => {
     friends: lang === 'fr' ? 'regarde entre amis' : 'watches with friends',
   };
   const moodMap = {
-    happy: lang === 'fr' ? 'de bonne humeur' : 'happy', sad: lang === 'fr' ? 'emotif' : 'emotional',
-    scared: lang === 'fr' ? 'envie de sensations fortes' : 'wants thrills', mind: lang === 'fr' ? 'envie de se faire retourner le cerveau' : 'wants mind-bending',
-    tired: lang === 'fr' ? 'fatigue veut quelque chose de leger' : 'tired wants something light',
+    happy: lang === 'fr'
+      ? 'joyeux — il veut une comedie legere feel-good, pas de drame lourd, pas d\'horreur'
+      : 'happy — wants light feel-good comedies only, no heavy drama, no horror',
+    sad: lang === 'fr'
+      ? 'emotif — il veut un drame puissant qui fait pleurer, tearjerker, pas de comedie'
+      : 'emotional — wants a powerful tearjerker drama, no comedies',
+    scared: lang === 'fr'
+      ? 'veut des frissons — pur thriller, horreur, suspense, tension, pas de comedie romantique'
+      : 'wants thrills — pure thriller, horror, suspense, tension, no romcom',
+    mind: lang === 'fr'
+      ? 'veut un mindfuck — film complexe avec twist, non-lineaire, philo, sci-fi cerebrale'
+      : 'wants a mindfuck — complex twisty non-linear cerebral sci-fi',
+    tired: lang === 'fr'
+      ? 'fatigue — chill, slow cinema, nature, rythme lent, pas de thriller'
+      : 'tired — chill slow cinema, nature, slow pace, no thrillers',
   };
 
   const noAdultRule = lang === 'fr'
@@ -302,6 +314,190 @@ ${baseJSON}`;
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ===== AI rating prediction =====
+app.post('/api/predict-rating', async (req, res) => {
+  const { title, year, type, library = [], lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const summary = library.slice(0, 25).map(i => `${i.title} (${i.year}) — ${i.userRating}/10`).join('\n');
+  const prompt = lang === 'fr'
+    ? `Voici les notes de l'utilisateur :\n${summary}\n\nPredis la note qu'il donnera a "${title}" (${year}, ${type}). Reponds STRICTEMENT en JSON: {"prediction": 8, "reason": "courte phrase personnalisee, max 140 caracteres"}. La prediction est un entier entre 1 et 10. JSON uniquement.`
+    : `Here are the user's ratings:\n${summary}\n\nPredict the rating they'll give "${title}" (${year}, ${type}). Respond STRICTLY in JSON: {"prediction": 8, "reason": "short personalised line, max 140 chars"}. Prediction is an integer 1-10. JSON only.`;
+  try {
+    const text = await callClaude(prompt, 200);
+    const parsed = parseJSON(text);
+    res.json(parsed);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== AI rating explanation after rating =====
+app.post('/api/explain-rating', async (req, res) => {
+  const { title, year, rating, library = [], lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const summary = library.slice(0, 20).map(i => `${i.title} (${i.year}) — ${i.userRating}/10`).join(', ');
+  const prompt = lang === 'fr'
+    ? `Ses notes: ${summary}. Il vient de mettre ${rating}/10 a "${title}" (${year}). En UNE phrase flatteuse de max 140 caracteres, explique pourquoi cette note est coherente avec ses gouts. Style "Tu as mis X/10 — c'est coherent avec ton amour des thrillers psychologiques...". Commence par "Tu as mis" ou "${rating}/10". Reponds juste la phrase, sans guillemets.`
+    : `Their ratings: ${summary}. They just rated "${title}" (${year}) ${rating}/10. In ONE flattering sentence (max 140 chars), explain why this rating fits their taste. Style: "You rated X/10 — that matches your love of psychological thrillers...". Start with "You rated" or "${rating}/10". Just the sentence, no quotes.`;
+  try {
+    const text = (await callClaude(prompt, 200)).trim().replace(/^["']|["']$/g, '');
+    res.json({ text });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Semantic natural-language search =====
+app.post('/api/semantic-search', async (req, res) => {
+  const { query, lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const noAdult = lang === 'fr'
+    ? '\nSTRICT: Exclus tout contenu adulte, pornographique, erotique.'
+    : '\nSTRICT: Exclude adult/pornographic/erotic content.';
+  const prompt = lang === 'fr'
+    ? `L'utilisateur cherche : "${query}"\n\nPropose 5 films/series parfaitement adaptes. STRICT JSON:\n{"recommendations":[{"title":"exact","year":"YYYY","type":"movie ou tv","reason":"pourquoi ca correspond, 1 phrase"}]}\nJSON uniquement.${noAdult}`
+    : `User query: "${query}"\n\nReturn 5 perfectly matched films/shows. STRICT JSON:\n{"recommendations":[{"title":"exact","year":"YYYY","type":"movie or tv","reason":"why it fits, 1 sentence"}]}\nJSON only.${noAdult}`;
+  try {
+    const text = await callClaude(prompt, 1200);
+    let parsed;
+    try { parsed = parseJSON(text); } catch { return res.json({ recommendations: [] }); }
+    const enriched = await Promise.all((parsed.recommendations || []).map(r => enrichWithTMDB(r, lang)));
+    res.json({ recommendations: enriched });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== "Tonight we watch" wizard =====
+app.post('/api/tonight', async (req, res) => {
+  const { viewingContext = 'solo', mood = null, timeBudget = null, library = [], lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const watchedSummary = library.slice(0, 30).map(i => `${i.title} (${i.year}) ${i.userRating || ''}`).join(', ');
+  const moodMap = {
+    happy: lang === 'fr' ? 'joyeux veut une comedie feel-good legere' : 'happy wants a feel-good comedy',
+    sad: lang === 'fr' ? 'emotif veut un drame puissant qui fait pleurer' : 'emotional wants a powerful tearjerker drama',
+    scared: lang === 'fr' ? 'veut frissons thriller horreur ou suspense' : 'wants thrills horror or suspense',
+    mind: lang === 'fr' ? 'veut un film complexe qui retourne le cerveau' : 'wants a mind-bending complex film',
+    tired: lang === 'fr' ? 'fatigue veut quelque chose de calme et leger' : 'tired wants calm and light',
+  };
+  const ctxMap = {
+    solo: lang === 'fr' ? 'seul' : 'alone', couple: lang === 'fr' ? 'en couple' : 'with partner',
+    family: lang === 'fr' ? 'en famille' : 'with family', friends: lang === 'fr' ? 'entre amis' : 'with friends',
+  };
+  const timeMap = {
+    '1h': lang === 'fr' ? 'moins de 90 minutes' : 'under 90 minutes',
+    '2h': lang === 'fr' ? 'environ 2h (90-150 min)' : 'about 2h (90-150 min)',
+    'any': lang === 'fr' ? 'peu importe la duree' : 'any length',
+  };
+  const prompt = lang === 'fr'
+    ? `L'utilisateur regarde ${ctxMap[viewingContext]}, ${moodMap[mood] || 'humeur neutre'}, ${timeMap[timeBudget] || 'duree libre'}.\nDeja vus (exclure) : ${watchedSummary}\n\nPropose 5 films/series parfaits ce soir. STRICT JSON: {"recommendations":[{"title":"exact","year":"YYYY","type":"movie ou tv","reason":"pourquoi c'est parfait ce soir, 1 phrase"}]}. JSON uniquement.`
+    : `User watches ${ctxMap[viewingContext]}, ${moodMap[mood] || 'neutral mood'}, ${timeMap[timeBudget] || 'any length'}.\nAlready watched (exclude): ${watchedSummary}\n\nReturn 5 perfect picks for tonight. STRICT JSON: {"recommendations":[{"title":"exact","year":"YYYY","type":"movie or tv","reason":"why perfect tonight, 1 sentence"}]}. JSON only.`;
+  try {
+    const text = await callClaude(prompt, 1200);
+    const parsed = parseJSON(text);
+    const enriched = await Promise.all((parsed.recommendations || []).map(r => enrichWithTMDB(r, lang)));
+    res.json({ recommendations: enriched });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Chat with Seret AI =====
+app.post('/api/chat', async (req, res) => {
+  const { message, history = [], lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const system = lang === 'fr'
+    ? `Tu es Seret AI, un ami cinephile passionne et bienveillant. Tu reponds en francais. Tu proposes des films/series concrets quand c'est pertinent (titre exact + annee). Ne mentionne JAMAIS Claude ou Anthropic. Sois chaleureux, pas prescripteur. Si l'utilisateur demande une recommandation, termine toujours par une ligne JSON cachee entre balises <seret-picks>...</seret-picks> avec max 3 films: [{"title":"exact","year":"YYYY","type":"movie ou tv"}]`
+    : `You are Seret AI, a passionate, warm cinephile friend. Reply in English. Propose concrete films/shows when relevant (exact title + year). NEVER mention Claude or Anthropic. Be warm, not pushy. If the user asks for a recommendation, always end with a hidden JSON line between <seret-picks>...</seret-picks> tags with max 3 films: [{"title":"exact","year":"YYYY","type":"movie or tv"}]`;
+  const messages = [
+    ...history.slice(-10).map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: message },
+  ];
+  try {
+    const text = await callClaude(messages, 1000, system);
+    // Extract hidden picks
+    const pickMatch = text.match(/<seret-picks>([\s\S]*?)<\/seret-picks>/i);
+    let picks = [];
+    if (pickMatch) {
+      try { picks = JSON.parse(pickMatch[1].trim()); } catch {}
+    }
+    const enrichedPicks = await Promise.all(picks.map(p => enrichWithTMDB(p, lang)));
+    const reply = text.replace(/<seret-picks>[\s\S]*?<\/seret-picks>/i, '').trim();
+    res.json({ reply, picks: enrichedPicks });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Seasonal / cultural banner =====
+app.get('/api/seasonal', (req, res) => {
+  const { lang = 'en', culture = '' } = req.query;
+  const now = new Date();
+  const m = now.getMonth() + 1; // 1-12
+  const d = now.getDate();
+  const fr = lang === 'fr';
+  // Order matters: cultural overrides first, then calendar
+  const isMuslim = culture === 'muslim';
+  const isJewish = culture === 'jewish';
+  const isChristian = culture === 'christian';
+
+  // Calendar-based seasons (rough, good enough without a religious-calendar dep)
+  if ((m === 10 && d >= 20) || (m === 11 && d === 1)) {
+    return res.json({ tag: 'halloween', emoji: '🎃', title: fr ? 'Halloween' : 'Halloween',
+      subtitle: fr ? 'Horreur, thrillers et frissons' : 'Horror, thrillers and chills',
+      genres: [27, 53], query: 'horror' });
+  }
+  if (m === 12) {
+    return res.json({ tag: 'christmas', emoji: '🎄', title: fr ? 'Noel' : 'Christmas',
+      subtitle: fr ? 'Feel-good en famille' : 'Feel-good with family',
+      genres: [10751, 35], query: 'christmas' });
+  }
+  if (m === 2 && d >= 7 && d <= 14) {
+    return res.json({ tag: 'valentines', emoji: '💕', title: fr ? 'Saint Valentin' : 'Valentine\'s',
+      subtitle: fr ? 'Romance et comedies romantiques' : 'Romance and romcoms',
+      genres: [10749] });
+  }
+  if (isJewish && (m === 9 || m === 10)) {
+    return res.json({ tag: 'high-holidays', emoji: '🍎', title: fr ? 'Tichri' : 'Tishrei',
+      subtitle: fr ? 'Famille, pardon et redemption' : 'Family, forgiveness and redemption' });
+  }
+  if (isJewish && m === 12) {
+    return res.json({ tag: 'hanukkah', emoji: '🕎', title: fr ? 'Hanouka' : 'Hanukkah',
+      subtitle: fr ? 'Lumiere et espoir' : 'Light and hope' });
+  }
+  if (isMuslim && (m === 3 || m === 4)) {
+    return res.json({ tag: 'ramadan', emoji: '🌙', title: fr ? 'Ramadan' : 'Ramadan',
+      subtitle: fr ? 'Famille et spiritualite' : 'Family and spirituality' });
+  }
+  if (isChristian && (m === 3 || m === 4)) {
+    return res.json({ tag: 'easter', emoji: '✝️', title: fr ? 'Paques' : 'Easter',
+      subtitle: fr ? 'Renouveau et foi' : 'Renewal and faith' });
+  }
+  if (m >= 6 && m <= 8) {
+    return res.json({ tag: 'summer', emoji: '☀️', title: fr ? 'Ete' : 'Summer',
+      subtitle: fr ? 'Blockbusters et aventures' : 'Blockbusters and adventure',
+      genres: [28, 12] });
+  }
+  if (m === 9 || m === 10 || m === 11) {
+    return res.json({ tag: 'autumn', emoji: '🍂', title: fr ? 'Automne' : 'Autumn',
+      subtitle: fr ? 'Films contemplatifs et cozy' : 'Contemplative and cozy',
+      genres: [18] });
+  }
+  return res.json({ tag: null });
+});
+
+// ===== Taste evolution =====
+app.post('/api/taste-evolution', async (req, res) => {
+  const { library = [], lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  if (library.length < 10) return res.json({ text: null });
+  // Group by year of adding
+  const byYear = {};
+  for (const i of library) {
+    const year = new Date(i.addedAt || Date.now()).getFullYear();
+    (byYear[year] = byYear[year] || []).push(i);
+  }
+  const summary = Object.entries(byYear).sort().map(([y, items]) =>
+    `${y}: ${items.slice(0, 10).map(i => i.title).join(', ')}`).join('\n');
+  const prompt = lang === 'fr'
+    ? `Voici l'historique cinematographique de l'utilisateur par annee :\n${summary}\n\nEn 3-4 phrases, decris comment ses gouts ont evolue. Style "En 2024 tu aimais l'action. En 2026 tu explores le cinema asiatique." Sois precis, personnel, flatteur. Reponds juste le paragraphe.`
+    : `User's cinema history by year:\n${summary}\n\nIn 3-4 sentences, describe how their taste evolved. Style "In 2024 you loved action. In 2026 you explore Asian cinema." Precise, personal, flattering. Just the paragraph.`;
+  try {
+    const text = await callClaude(prompt, 400);
+    res.json({ text });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ===== Debate with AI =====
