@@ -262,6 +262,21 @@
     </div>
   </div>
 
+  <!-- Share on WhatsApp modal (with optional custom comment) -->
+  <div id="shareModal" class="modal" onclick="if(event.target===this)closeShareModal()">
+    <div class="modal-content auth-modal-content">
+      <button class="modal-close" onclick="closeShareModal()">&times;</button>
+      <div class="auth-modal-body">
+        <h2 class="auth-title" data-i18n="share_title">Share on WhatsApp</h2>
+        <p class="auth-sub" data-i18n="share_sub">Add a personal comment — or leave empty</p>
+        <textarea id="shareCommentInput" data-i18n-placeholder="share_comment_ph" placeholder="What did you think of it?" oninput="renderSharePreview()" style="width:100%;min-height:90px;padding:14px;background:var(--bg-2);border:1px solid var(--border);border-radius:12px;color:var(--text);outline:none;resize:vertical;font-size:14px;line-height:1.5;font-family:inherit"></textarea>
+        <div class="share-preview-label" data-i18n="share_preview_label">Preview</div>
+        <pre id="sharePreview" class="share-preview"></pre>
+        <button class="btn btn-gold" style="width:100%;justify-content:center;margin-top:14px" onclick="submitShare()" data-i18n="share_submit">Share on WhatsApp</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Recommend to friend modal -->
   <div id="recoModal" class="modal" onclick="if(event.target===this)closeRecoModal()">
     <div class="modal-content auth-modal-content">
@@ -313,6 +328,6 @@
     </button>
   </nav>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

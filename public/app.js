@@ -101,6 +101,14 @@ const i18n = {
     from_friend: 'From',
     upload_photo: 'Upload photo', or_choose: 'or choose an avatar',
     edit_profile: 'Edit profile',
+    your_rating: 'Your rating', your_review: 'Your review',
+    rate_prompt: 'Rate this film', no_rating_yet: 'Not rated yet',
+    share_title: 'Share on WhatsApp', share_sub: 'Add a personal comment — or leave empty',
+    share_comment_ph: 'What did you think of it?',
+    share_submit: 'Share on WhatsApp', share_preview_label: 'Preview',
+    remove_title: 'Remove from library?', remove_confirm: 'This will delete it and your rating, journal and viewing context.',
+    remove_btn: 'Remove', cancel: 'Cancel',
+    mark_seen: 'Mark as seen', already_seen: 'Already seen',
   },
   fr: {
     search_placeholder: 'Rechercher films & series...',
@@ -176,6 +184,14 @@ const i18n = {
     from_friend: 'De',
     upload_photo: 'Importer une photo', or_choose: 'ou choisis un avatar',
     edit_profile: 'Modifier le profil',
+    your_rating: 'Ta note', your_review: 'Ton avis',
+    rate_prompt: 'Note ce film', no_rating_yet: 'Pas encore note',
+    share_title: 'Partager sur WhatsApp', share_sub: 'Ajoute un commentaire perso — ou laisse vide',
+    share_comment_ph: 'Qu\'en as-tu pense ?',
+    share_submit: 'Partager sur WhatsApp', share_preview_label: 'Apercu',
+    remove_title: 'Retirer de la bibliotheque ?', remove_confirm: 'Cela supprimera ta note, ton journal et le contexte de visionnage.',
+    remove_btn: 'Retirer', cancel: 'Annuler',
+    mark_seen: 'Marquer comme vu', already_seen: 'Deja vu',
   }
 };
 const t = k => i18n[currentLang]?.[k] || i18n.en[k] || k;
@@ -1127,9 +1143,42 @@ async function openDetail(type, id) {
     const videos = d.videos?.results || [];
     const trailer = videos.find(v => v.type === 'Trailer' && v.site === 'YouTube') || videos.find(v => v.site === 'YouTube');
     const existing = library.find(l => l.id === d.id && l.type === type);
-    const itemForLib = { id: d.id, type, title, year,
-      poster: d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : null,
-      backdrop, overview, rating };
+    const posterUrl = d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : null;
+    const itemForLib = { id: d.id, type, title, year, poster: posterUrl, backdrop, overview, rating };
+    const isWatched = existing && (existing.status || 'watched') === 'watched';
+    const isInWatchlist = existing && existing.status === 'to_watch';
+
+    // Build the user-rating block (editable stars) — only for items already in the library as watched
+    let userRatingHTML = '';
+    if (existing && isWatched) {
+      const r = existing.userRating || 0;
+      let stars = '';
+      for (let i = 1; i <= 10; i++) {
+        stars += `<span class="star ${i <= r ? 'filled' : ''}" onclick="rateItem(${d.id}, '${type}', ${i}); this.parentElement.querySelectorAll('.star').forEach((s,idx)=>s.classList.toggle('filled', idx<${i}))">★</span>`;
+      }
+      userRatingHTML = `
+        <div class="modal-user-rating">
+          <div class="modal-user-rating-label">${t('your_rating')}</div>
+          <div class="user-rating large">${stars}</div>
+          ${r === 0 ? `<div class="modal-user-rating-hint">${t('rate_prompt')}</div>` : ''}
+        </div>`;
+    }
+
+    // Build the action buttons — adapt to library state
+    let primaryActions = '';
+    if (!existing) {
+      primaryActions = `
+        <button class="btn btn-primary" onclick="handleModalAdd('watched')">✓ ${t('seen')}</button>
+        <button class="btn btn-glass" onclick="handleModalAdd('to_watch')">+ ${t('to_watch')}</button>`;
+    } else if (isInWatchlist) {
+      primaryActions = `
+        <button class="btn btn-primary" onclick="handleModalAdd('watched')">✓ ${t('mark_seen')}</button>
+        <button class="btn btn-danger" onclick="confirmRemoveFromLibrary(${d.id}, '${type}', ${JSON.stringify(esc(title))})">🗑 ${t('remove_btn')}</button>`;
+    } else {
+      primaryActions = `
+        <button class="btn btn-glass" disabled style="opacity:0.7">✓ ${t('already_seen')}</button>
+        <button class="btn btn-danger" onclick="confirmRemoveFromLibrary(${d.id}, '${type}', ${JSON.stringify(esc(title))})">🗑 ${t('remove_btn')}</button>`;
+    }
 
     body.innerHTML = `
       <button class="modal-back-btn" onclick="closeModal()" aria-label="Back">
@@ -1137,32 +1186,37 @@ async function openDetail(type, id) {
       </button>
       ${backdrop ? `<img class="modal-backdrop" src="${backdrop}" alt="">` : ''}
       <div class="modal-info">
-        <div class="modal-title">${esc(title)}</div>
-        <div class="modal-meta">
-          <span>${year}</span>
-          ${d.runtime ? `<span>${d.runtime} min</span>` : ''}
-          ${d.number_of_seasons ? `<span>${d.number_of_seasons} ${currentLang === 'fr' ? 'saisons' : 'seasons'}</span>` : ''}
-          ${d.origin_country?.length ? `<span>${d.origin_country.join(', ')}</span>` : ''}
-          <span><span class="star">★</span> ${rating?.toFixed(1) || '—'}</span>
+        <div class="modal-header-row">
+          ${posterUrl ? `<img class="modal-poster" src="${posterUrl}" alt="${esc(title)}">` : ''}
+          <div class="modal-header-text">
+            <div class="modal-title">${esc(title)}</div>
+            <div class="modal-meta">
+              <span>${year}</span>
+              ${d.runtime ? `<span>${d.runtime} min</span>` : ''}
+              ${d.number_of_seasons ? `<span>${d.number_of_seasons} ${currentLang === 'fr' ? 'saisons' : 'seasons'}</span>` : ''}
+              ${d.origin_country?.length ? `<span>${d.origin_country.join(', ')}</span>` : ''}
+              <span><span class="star">★</span> ${rating?.toFixed(1) || '—'}</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+              ${genres.map(g => `<span class="genre-tag">${g}</span>`).join('')}
+            </div>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-          ${genres.map(g => `<span class="genre-tag">${g}</span>`).join('')}
-        </div>
+        ${userRatingHTML}
         ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}">`).join('')}</div>` : ''}
         ${overview ? `<div class="modal-overview">${esc(overview)}</div>` : ''}
         <div class="modal-actions">
-          <button class="btn btn-primary" onclick="handleModalAdd('watched')">✓ ${t('seen')}</button>
-          <button class="btn btn-glass" onclick="handleModalAdd('to_watch')">+ ${t('to_watch')}</button>
+          ${primaryActions}
           ${trailer ? `<button class="btn btn-outline" onclick="toggleTrailer('${trailer.key}')">▶ ${t('watch_trailer')}</button>` : ''}
           <button class="btn btn-outline" onclick="manualShare(${d.id}, '${type}', ${JSON.stringify(esc(title))})">💬 WhatsApp</button>
-          ${currentUser ? `<button class="btn btn-outline" onclick="openRecoModal(${d.id}, '${type}', ${JSON.stringify(esc(title))}, '${itemForLib.poster || ''}')">↗ ${t('recommend_friend')}</button>` : ''}
+          ${currentUser ? `<button class="btn btn-outline" onclick="openRecoModal(${d.id}, '${type}', ${JSON.stringify(esc(title))}, '${posterUrl || ''}')">↗ ${t('recommend_friend')}</button>` : ''}
           <button class="btn btn-outline" onclick="loadCulturalContext(${JSON.stringify(esc(title))}, '${year}')">${t('cultural_btn')}</button>
         </div>
         <div id="trailerSlot"></div>
         <div id="culturalSlot"></div>
         ${currentUser && existing ? `
-          <div class="journal-box">
-            <div class="journal-label">${t('journal_label')}</div>
+          <div class="journal-box prominent">
+            <div class="journal-label">${t('your_review')} — ${t('journal_label')}</div>
             <textarea id="journalText" placeholder="${t('journal_ph')}">${esc(existing.comment || '')}</textarea>
             <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="saveJournal(${d.id}, '${type}')">${t('save')}</button>
           </div>
@@ -1492,23 +1546,60 @@ function buildShareLink(item) {
   return `${base}?add=${item.type}:${item.id}`;
 }
 
-function buildWhatsAppMessage(item) {
+function buildWhatsAppMessage(item, customComment = null) {
   const link = buildShareLink(item);
-  const pitch = (item.overview || '').trim().split(/[.!?]/)[0];
-  const shortPitch = pitch && pitch.length > 5 && pitch.length < 140 ? pitch : '';
+  // If the user wrote a custom comment, use it verbatim. Otherwise fall back to a TMDB one-liner pitch.
+  let comment = (customComment || '').trim();
+  if (!comment) {
+    const pitch = (item.overview || '').trim().split(/[.!?]/)[0];
+    if (pitch && pitch.length > 5 && pitch.length < 140) comment = pitch + ' 🔥';
+  }
+  const hasRating = Number.isFinite(item.userRating) && item.userRating > 0;
   if (currentLang === 'fr') {
     const lines = [];
-    lines.push(`🎬 J'ai regarde *${item.title}* et je lui ai mis ${item.userRating}/10 !`);
-    if (shortPitch) lines.push(`${shortPitch} 🔥`);
-    lines.push(`👉 Regarde-le sur Seret : ${link}`);
+    lines.push(hasRating
+      ? `🎬 J'ai regarde *${item.title}* et je lui ai mis ${item.userRating}/10 !`
+      : `🎬 Je te recommande *${item.title}* !`);
+    if (comment) lines.push(comment);
+    lines.push(`👉 Decouvre-le sur Seret : ${link}`);
     return lines.join('\n');
   } else {
     const lines = [];
-    lines.push(`🎬 I just watched *${item.title}* and gave it ${item.userRating}/10 !`);
-    if (shortPitch) lines.push(`${shortPitch} 🔥`);
-    lines.push(`👉 Watch it on Seret: ${link}`);
+    lines.push(hasRating
+      ? `🎬 I just watched *${item.title}* and gave it ${item.userRating}/10 !`
+      : `🎬 You have to check out *${item.title}* !`);
+    if (comment) lines.push(comment);
+    lines.push(`👉 Discover it on Seret: ${link}`);
     return lines.join('\n');
   }
+}
+
+// ===== Share-with-comment modal =====
+let shareTargetItem = null;
+
+function closeShareModal() { document.getElementById('shareModal').classList.remove('active'); shareTargetItem = null; }
+function renderSharePreview() {
+  if (!shareTargetItem) return;
+  const commentEl = document.getElementById('shareCommentInput');
+  const preview = document.getElementById('sharePreview');
+  const msg = buildWhatsAppMessage(shareTargetItem, commentEl.value);
+  preview.textContent = msg;
+}
+function submitShare() {
+  if (!shareTargetItem) return;
+  const comment = document.getElementById('shareCommentInput').value;
+  const msg = buildWhatsAppMessage(shareTargetItem, comment);
+  closeShareModal();
+  openWhatsApp(msg);
+}
+
+// ===== Remove from library (with confirmation) =====
+function confirmRemoveFromLibrary(id, type, title) {
+  const promptMsg = `${t('remove_title')}\n\n${title}\n\n${t('remove_confirm')}`;
+  if (!confirm(promptMsg)) return;
+  removeFromLibrary(id, type);
+  closeModal();
+  showToast(t('removed'));
 }
 
 function showWhatsAppSharePrompt(item) {
@@ -1538,9 +1629,13 @@ function openWhatsApp(msg) {
 }
 
 function manualShare(tmdbId, type, title) {
-  const item = library.find(l => l.id === tmdbId && l.type === type) || { id: tmdbId, type, title, userRating: 0 };
-  const msg = buildWhatsAppMessage(item);
-  openWhatsApp(msg);
+  // Prefer the library entry (has rating + overview). Fall back to a minimal item.
+  const fromLib = library.find(l => l.id === tmdbId && l.type === type);
+  shareTargetItem = fromLib || { id: tmdbId, type, title, userRating: 0 };
+  document.getElementById('shareCommentInput').value = '';
+  renderSharePreview();
+  document.getElementById('shareModal').classList.add('active');
+  setTimeout(() => document.getElementById('shareCommentInput').focus(), 100);
 }
 function shareInvite() {
   const code = userProfile?.share_code;
@@ -1833,7 +1928,7 @@ function shareWrapped(d) {
 
 // ===== Keyboard =====
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeModal(); closeAuthModal(); closeContextModal(); closeBadgesModal(); closeCameraModal(); closeRecoModal(); }
+  if (e.key === 'Escape') { closeModal(); closeAuthModal(); closeContextModal(); closeBadgesModal(); closeCameraModal(); closeRecoModal(); closeShareModal(); }
 });
 
 // ===== Toast =====
