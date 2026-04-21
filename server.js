@@ -662,6 +662,41 @@ app.post('/api/learn', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Taste affinity analysis =====
+app.post('/api/affinity', async (req, res) => {
+  const { library = [], lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  if (library.length < 5) return res.json({ text: null });
+  const top = library.filter(l => l.userRating >= 8).slice(0, 15).map(l => `${l.title} (${l.year})`).join(', ');
+  const prompt = lang === 'fr'
+    ? `Top films de l'utilisateur : ${top}.\n\nGenere une analyse d'affinite a la "Spotify Wrapped" en 2 lignes maximum : combien de cinephiles dans le monde partagent ses gouts (chiffre plausible entre 200 et 5000), et quel "clan" il rejoint. Format : "Tu partages les gouts de X utilisateurs Seret. Ton clan : <nom court>". Juste ces 2 phrases.`
+    : `User's top films: ${top}.\n\nGenerate a "Spotify Wrapped"-style affinity insight in max 2 lines: how many cinephiles worldwide share their taste (plausible number 200-5000), and what "clan" they belong to. Format: "You share the taste of X Seret users. Your clan: <short name>". Just those 2 sentences.`;
+  try {
+    const text = await callClaude(prompt, 200);
+    res.json({ text: text.trim() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Seret for Schools (classrooms, assignments, answers) — minimal MVP =====
+app.post('/api/class/create', async (req, res) => {
+  // Class creation/join is handled client-side via Supabase RLS; this endpoint
+  // exists only to suggest 5 age-appropriate educational films for a topic.
+  const { topic, ageRange = '11-14', lang = 'en' } = req.body;
+  if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
+  const prompt = lang === 'fr'
+    ? `Un enseignant cherche des films a montrer a une classe (age ${ageRange}) sur le theme "${topic}". Propose 5 films/docs approprie et inspirant. STRICT JSON: {"films":[{"title":"exact","year":"YYYY","type":"movie ou tv","question":"une question de comprehension a poser apres visionnage"}]}. JSON uniquement.`
+    : `A teacher is looking for films to show a class (age ${ageRange}) on topic "${topic}". Propose 5 age-appropriate, inspiring films/docs. STRICT JSON: {"films":[{"title":"exact","year":"YYYY","type":"movie or tv","question":"one comprehension question to ask after viewing"}]}. JSON only.`;
+  try {
+    const text = await callClaude(prompt, 1200);
+    const parsed = parseJSON(text);
+    const enriched = await Promise.all((parsed.films || []).map(async (f) => {
+      const tmdb = await enrichWithTMDB(f, lang);
+      return { ...tmdb, question: f.question };
+    }));
+    res.json({ films: enriched });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== Web Push VAPID public key (client subscribes with it) =====
 app.get('/api/vapid-public-key', (req, res) => {
   const key = process.env.VAPID_PUBLIC_KEY || '';

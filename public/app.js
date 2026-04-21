@@ -1779,15 +1779,36 @@ function showStatsMenu() {
       <div class="stat-card"><div class="stat-emoji">🔥</div><div class="stat-value">${userStats.streak_days || 0}</div><div class="stat-label">${t('streak')}</div></div>
       <div class="stat-card"><div class="stat-emoji">🏅</div><div class="stat-value">${owned.length}/${keys.length}</div><div class="stat-label">${t('badges')}</div></div>
     </div>
+    <div id="affinitySlot" style="margin-bottom:16px"></div>
     <div class="ai-section-label" style="margin-bottom:10px">${t('badges')}</div>
     <div class="badges-grid">
       ${keys.map(k => `<div class="badge-card ${owned.includes(k) ? 'owned' : 'locked'}"><div class="badge-emoji">${defs[k].emoji}</div><div class="badge-name">${defs[k].name}</div></div>`).join('')}
     </div>
-    <div style="display:flex;gap:8px;margin-top:24px">
+    <div style="display:flex;gap:8px;margin-top:24px;flex-wrap:wrap">
       <button class="btn btn-outline" style="flex:1" onclick="openProfilePicker();closeBadgesModal();">${t('select_profile')}</button>
+      <button class="btn btn-outline" style="flex:1" onclick="enablePushNotifications()">🔔 ${t('push_enable')}</button>
       <button class="btn btn-outline" style="flex:1" onclick="signOut(); closeBadgesModal();">${t('sign_out')}</button>
     </div>`;
   document.getElementById('badgesModal').classList.add('active');
+  loadAffinity();
+}
+
+async function loadAffinity() {
+  const slot = document.getElementById('affinitySlot');
+  if (!slot) return;
+  const watched = library.filter(l => l.userRating > 0);
+  if (watched.length < 5) return;
+  slot.innerHTML = `<div class="recs-loading" style="justify-content:flex-start"><div class="spinner"></div></div>`;
+  try {
+    const res = await fetch('/api/affinity', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ library: watched.slice(0, 20), lang: currentLang }),
+    });
+    const data = await res.json();
+    slot.innerHTML = data.text
+      ? `<div class="cultural-context"><div class="ai-section-label">${currentLang === 'fr' ? 'Ton clan Seret' : 'Your Seret clan'}</div>${esc(data.text)}</div>`
+      : '';
+  } catch { slot.innerHTML = ''; }
 }
 function closeBadgesModal() { document.getElementById('badgesModal').classList.remove('active'); }
 
@@ -1944,7 +1965,15 @@ function showFriends() {
   if (currentUser) {
     document.getElementById('friendsAuthWall').style.display = 'none';
     document.getElementById('friendsContent').style.display = 'block';
-    document.getElementById('myShareCode').textContent = userProfile?.share_code || '...';
+    const code = userProfile?.share_code || '...';
+    document.getElementById('myShareCode').textContent = code;
+    // Render QR code image (no lib — use qrserver.com, free & cached)
+    const qr = document.getElementById('shareQrCode');
+    if (qr && userProfile?.share_code) {
+      const url = `${window.location.origin}/?friend=${userProfile.share_code}`;
+      qr.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=12&bgcolor=1a1a1a&color=D4AF37&data=${encodeURIComponent(url)}`;
+      qr.style.display = 'block';
+    }
     loadFriends();
     loadIncomingRecos();
   } else {
@@ -3119,6 +3148,30 @@ async function loadCinemaNightPoll(pollId) {
     setTimeout(() => loadCinemaNightPoll(Number(pollId)), 800);
   }
 })();
+
+// Intercept ?friend=<share_code> on URL — auto-send friend request once signed in
+(function captureFriendFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('friend');
+  if (code) {
+    localStorage.setItem('seret-pending-friend', code);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+})();
+async function processPendingFriend() {
+  const code = localStorage.getItem('seret-pending-friend');
+  if (!code || !sb || !currentUser) return;
+  localStorage.removeItem('seret-pending-friend');
+  document.getElementById('friendCodeInput').value = code;
+  await sendFriendRequest();
+  showFriends();
+}
+// Hook into onAuthChange so the request fires after sign-in
+const _prevAuthChange = onAuthChange;
+onAuthChange = async function () {
+  await _prevAuthChange.apply(this, arguments);
+  processPendingFriend().catch(() => {});
+};
 
 // ===== Init =====
 applyLang();
