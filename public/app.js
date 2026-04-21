@@ -974,7 +974,7 @@ async function loadTrending() {
     const data = await res.json();
     if (data.error) return console.warn(data.error);
     const items = data.results || [];
-    if (items.length > 0 && currentCategory === 'all') {
+    if (items.length > 0) {
       heroItem = items[0];
       const hero = document.getElementById('heroSection');
       hero.style.backgroundImage = `url(${heroItem.backdrop || heroItem.poster || ''})`;
@@ -1372,19 +1372,25 @@ function aiRecCard(r) {
             <span class="providers-label">${t('available_on')}</span>
             ${r.providers.map(p => `<img src="${p.logo}" alt="${esc(p.name)}" title="${esc(p.name)}">`).join('')}
           </div>` : ''}
-        ${r.tmdb_id ? `<button class="btn btn-primary btn-sm" style="align-self:flex-start" onclick='addAIRec(${JSON.stringify(r).replace(/'/g, "&#39;")})'>+ ${t('to_watch')}</button>` : ''}
+        ${r.tmdb_id ? `<button class="btn btn-primary btn-sm ai-rec-add-btn" style="align-self:flex-start" onclick='addAIRec(${JSON.stringify(r).replace(/'/g, "&#39;")}, this)'>+ ${t('to_watch')}</button>` : ''}
       </div>
     </div>`;
 }
-function addAIRec(r) {
+function addAIRec(r, btn) {
   const item = {
     id: r.tmdb_id, type: r.type || 'movie',
     title: r.title, year: r.year,
     poster: r.poster, backdrop: r.backdrop, overview: r.overview,
     rating: r.rating, status: 'to_watch',
   };
-  if (addToLibrary(item)) { awardPoints(10); showToast(t('added')); }
+  const added = addToLibrary(item);
+  if (added) { awardPoints(10); showToast(t('added')); }
   else showToast(t('already_in'));
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '✓ ' + (added ? t('added') : t('already_in'));
+    btn.classList.add('added');
+  }
 }
 
 // ===== Events & stats =====
@@ -1713,10 +1719,20 @@ function copyShareCode() {
 async function viewFriendLibrary(friendId, friendName) {
   document.getElementById('friendLibrarySection').style.display = 'block';
   document.getElementById('friendLibraryName').textContent = friendName + t('library_of');
-  const { data } = await sb.from('library_items').select('*').eq('user_id', friendId).order('added_at', { ascending: false });
+  const { data } = await sb.from('library_items').select('*')
+    .eq('user_id', friendId).eq('not_interested', false)
+    .order('added_at', { ascending: false });
+  // Dedupe across multiple sub-profiles: keep the most recent / highest-rated
+  const seen = new Map();
+  for (const r of (data || [])) {
+    const key = `${r.tmdb_id}_${r.media_type}`;
+    const prev = seen.get(key);
+    if (!prev || (r.user_rating || 0) > (prev.user_rating || 0)) seen.set(key, r);
+  }
+  const unique = [...seen.values()];
   const grid = document.getElementById('friendLibraryGrid');
-  grid.innerHTML = data && data.length
-    ? data.map(r => cardHTML({ ...r, id: r.tmdb_id, type: r.media_type }, true, true, friendId)).join('')
+  grid.innerHTML = unique.length
+    ? unique.map(r => cardHTML({ ...r, id: r.tmdb_id, type: r.media_type }, true, true, friendId)).join('')
     : `<div class="empty-state"><p>${currentLang === 'fr' ? 'Vide' : 'Empty'}</p></div>`;
 }
 function closeFriendLibrary() { document.getElementById('friendLibrarySection').style.display = 'none'; }
