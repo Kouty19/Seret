@@ -35,6 +35,9 @@
       <div class="search-wrapper">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="searchInput" data-i18n-placeholder="search_placeholder" placeholder="Search movies & series...">
+        <button class="mic-btn" id="micBtn" onclick="toggleVoiceSearch()" title="Voice search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
         <div id="searchResults" class="search-dropdown"></div>
       </div>
       <nav class="nav">
@@ -80,6 +83,28 @@
         </div>
       </div>
       <div class="section">
+        <!-- Tonight wizard CTA -->
+        <button class="tonight-cta" onclick="openTonightWizard()">
+          ✨ <span data-i18n="tonight_cta">Ce soir on regarde quoi ?</span>
+          <span class="tonight-cta-sub" data-i18n="tonight_cta_sub">Seret AI te trouve le film parfait en 10 secondes</span>
+        </button>
+
+        <!-- Seasonal banner (populated by JS) -->
+        <div id="seasonalBanner"></div>
+
+        <!-- Stories strip (friends' recent high-rated films) -->
+        <div id="storiesStrip"></div>
+
+        <!-- Semantic AI search -->
+        <div class="semantic-search-wrap">
+          <div class="semantic-search-label" data-i18n="semantic_label">✨ Décris ce que tu cherches à Seret AI</div>
+          <div class="semantic-search-row">
+            <input type="text" id="semanticSearchInput" data-i18n-placeholder="semantic_ph" placeholder="Un film pour enfants avec une belle morale..." onkeypress="if(event.key==='Enter')runSemanticSearch()">
+            <button class="btn btn-gold" onclick="runSemanticSearch()" data-i18n="semantic_go">Chercher</button>
+          </div>
+          <div id="semanticResults"></div>
+        </div>
+
         <div class="category-tabs">
           <button class="cat-tab active" data-cat="all" onclick="selectCategory('all', this)" data-i18n="cat_all">All</button>
           <button class="cat-tab" data-cat="movie" onclick="selectCategory('movie', this)" data-i18n="cat_movies">Films</button>
@@ -89,6 +114,9 @@
         </div>
         <h2 class="section-title" data-i18n="trending">Trending</h2>
         <div class="grid" id="trendingGrid"></div>
+
+        <!-- Friends activity feed -->
+        <div id="activityFeedWrap"></div>
       </div>
     </section>
 
@@ -210,6 +238,21 @@
         <div class="auth-logo"><span class="logo-icon" style="width:56px;height:56px;font-size:30px">S</span></div>
         <h2 class="auth-title" id="authModalTitle" data-i18n="sign_in_title">Sign in to Seret</h2>
         <p class="auth-sub" data-i18n="sign_in_sub">Save your library and share it with friends</p>
+        <div class="oauth-buttons">
+          <button class="oauth-btn google" onclick="signInWithGoogle()">
+            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            <span data-i18n="sign_in_with_google">Continue with Google</span>
+          </button>
+          <button class="oauth-btn" onclick="signInWithApple()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+            <span data-i18n="sign_in_with_apple">Continue with Apple</span>
+          </button>
+          <button class="oauth-btn" onclick="signInWithFacebook()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12a12 12 0 1 0-13.87 11.85v-8.38H7.08V12h3.05V9.36c0-3.01 1.79-4.67 4.53-4.67 1.31 0 2.69.23 2.69.23v2.96h-1.52c-1.49 0-1.95.93-1.95 1.88V12h3.32l-.53 3.47h-2.79v8.38A12 12 0 0 0 24 12z"/></svg>
+            <span data-i18n="sign_in_with_facebook">Continue with Facebook</span>
+          </button>
+        </div>
+        <div class="oauth-divider"><span data-i18n="or_with_email">or email</span></div>
         <div class="auth-form">
           <input type="email" id="authEmail" data-i18n-placeholder="email_placeholder" placeholder="Email">
           <input type="password" id="authPassword" data-i18n-placeholder="password_placeholder" placeholder="Password">
@@ -305,6 +348,46 @@
     </div>
   </div>
 
+  <!-- Tonight wizard modal -->
+  <div id="tonightModal" class="modal" onclick="if(event.target===this)closeTonightWizard()">
+    <div class="modal-content auth-modal-content">
+      <button class="modal-close" onclick="closeTonightWizard()">&times;</button>
+      <div class="auth-modal-body" id="tonightBody"></div>
+    </div>
+  </div>
+
+  <!-- Hide card reason modal -->
+  <div id="hideReasonModal" class="hide-reason-menu" style="display:none" onclick="if(event.target===this)closeHideReason()">
+    <div class="hide-reason-box">
+      <h3 style="font-family:var(--serif);margin:0 0 16px" data-i18n="hide_reason_title">Pourquoi masquer ?</h3>
+      <button onclick="submitHideReason('nsfw')">🙈 <span data-i18n="hide_r_nsfw">Image inappropriée</span></button>
+      <button onclick="submitHideReason('notmystyle')">👎 <span data-i18n="hide_r_style">Pas mon style</span></button>
+      <button onclick="submitHideReason('seen')">✅ <span data-i18n="hide_r_seen">Déjà vu</span></button>
+      <button onclick="submitHideReason('other')">🚫 <span data-i18n="hide_r_other">Autre raison</span></button>
+      <button onclick="closeHideReason()" style="background:transparent;border-color:transparent;color:var(--text-dim)" data-i18n="cancel">Annuler</button>
+    </div>
+  </div>
+
+  <!-- Floating chat -->
+  <button class="chat-fab" id="chatFab" onclick="toggleChat()" title="Seret AI chat">💬</button>
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-header">
+      <div class="chat-header-title">Seret AI</div>
+      <button onclick="toggleChat()" style="background:transparent;border:none;color:var(--text-dim);font-size:22px;cursor:pointer">&times;</button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" data-i18n-placeholder="chat_ph" placeholder="Demande-moi un film..." onkeypress="if(event.key==='Enter')sendChat()">
+      <button onclick="sendChat()" data-i18n="chat_send">Envoyer</button>
+    </div>
+  </div>
+
+  <!-- Story viewer -->
+  <div class="story-viewer" id="storyViewer" onclick="if(event.target===this)closeStoryViewer()">
+    <button class="story-close" onclick="closeStoryViewer()">&times;</button>
+    <div class="story-card" id="storyCardBody"></div>
+  </div>
+
   <!-- Mobile bottom navigation -->
   <nav class="mobile-bottom-nav">
     <button class="mbn-btn active" data-view="home" onclick="showHome()">
@@ -328,6 +411,16 @@
     </button>
   </nav>
 
-  <script src="app.js?v=21"></script>
+  <!-- Tiny footer with legal links -->
+  <footer style="text-align:center;padding:40px 20px 100px;color:var(--text-dim);font-size:12px;border-top:1px solid var(--border);margin-top:60px">
+    <div style="margin-bottom:8px">
+      <a href="/privacy" style="color:var(--text-dim);margin:0 8px">Privacy</a>·
+      <a href="/terms" style="color:var(--text-dim);margin:0 8px">Terms</a>·
+      <a href="mailto:kouty@elevon.fr" style="color:var(--text-dim);margin:0 8px">Support</a>
+    </div>
+    <div>This product uses the TMDB API but is not endorsed or certified by TMDB.</div>
+  </footer>
+
+  <script src="app.js?v=22"></script>
 </body>
 </html>

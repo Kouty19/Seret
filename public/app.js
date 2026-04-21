@@ -109,6 +109,33 @@ const i18n = {
     remove_title: 'Remove from library?', remove_confirm: 'This will delete it and your rating, journal and viewing context.',
     remove_btn: 'Remove', cancel: 'Cancel',
     mark_seen: 'Mark as seen', already_seen: 'Already seen',
+    tonight_cta: "Tonight, what are we watching?",
+    tonight_cta_sub: 'Seret AI finds the perfect film in 10 seconds',
+    tonight_q1: 'Who are you watching with?',
+    tonight_q2: 'How do you feel?',
+    tonight_q3: 'How much time do you have?',
+    time_1h: 'Under 90 min', time_2h: 'About 2h', time_any: 'Any length',
+    tonight_finding: 'Seret AI is picking the perfect film...',
+    semantic_label: '✨ Describe what you\'re looking for to Seret AI',
+    semantic_ph: 'A kids\' film with a beautiful family moral...',
+    semantic_go: 'Search',
+    chat_ph: 'Ask me for a film...', chat_send: 'Send',
+    chat_welcome: "Hi! I'm Seret AI. Tell me what kind of film you feel like — mood, topic, vibe.",
+    hide_reason_title: 'Why hide this?',
+    hide_r_nsfw: 'Inappropriate image',
+    hide_r_style: 'Not my style',
+    hide_r_seen: 'Already seen',
+    hide_r_other: 'Other reason',
+    voice_listening: 'Listening...', voice_not_supported: 'Voice search not supported on this browser',
+    story_reactions_label: 'React',
+    activity_feed_title: 'Your friends',
+    just_watched: 'just watched',
+    watchlist_reminder: 'You added this film ages ago. Tonight\'s the night?',
+    sign_in_with_google: 'Continue with Google',
+    sign_in_with_apple: 'Continue with Apple',
+    sign_in_with_facebook: 'Continue with Facebook',
+    sign_in_with_phone: 'Continue with phone',
+    or_with_email: 'or email',
   },
   fr: {
     search_placeholder: 'Rechercher films & series...',
@@ -192,6 +219,33 @@ const i18n = {
     remove_title: 'Retirer de la bibliotheque ?', remove_confirm: 'Cela supprimera ta note, ton journal et le contexte de visionnage.',
     remove_btn: 'Retirer', cancel: 'Annuler',
     mark_seen: 'Marquer comme vu', already_seen: 'Deja vu',
+    tonight_cta: 'Ce soir on regarde quoi ?',
+    tonight_cta_sub: 'Seret AI te trouve le film parfait en 10 secondes',
+    tonight_q1: 'Tu regardes avec qui ?',
+    tonight_q2: 'Tu te sens comment ?',
+    tonight_q3: 'Tu as combien de temps ?',
+    time_1h: 'Moins d\'1h30', time_2h: 'Environ 2h', time_any: 'Peu importe',
+    tonight_finding: 'Seret AI cherche le film parfait...',
+    semantic_label: '✨ Decris ce que tu cherches a Seret AI',
+    semantic_ph: 'Un film pour enfants avec une belle morale familiale...',
+    semantic_go: 'Chercher',
+    chat_ph: 'Demande-moi un film...', chat_send: 'Envoyer',
+    chat_welcome: 'Salut ! Je suis Seret AI. Dis-moi quel film te tente — humeur, theme, ambiance.',
+    hide_reason_title: 'Pourquoi masquer ?',
+    hide_r_nsfw: 'Image inappropriee',
+    hide_r_style: 'Pas mon style',
+    hide_r_seen: 'Deja vu',
+    hide_r_other: 'Autre raison',
+    voice_listening: 'J\'ecoute...', voice_not_supported: 'Recherche vocale non supportee par ce navigateur',
+    story_reactions_label: 'Reagir',
+    activity_feed_title: 'Tes amis',
+    just_watched: 'vient de terminer',
+    watchlist_reminder: 'Tu as ajoute ce film il y a une eternite. C\'est le moment ?',
+    sign_in_with_google: 'Continuer avec Google',
+    sign_in_with_apple: 'Continuer avec Apple',
+    sign_in_with_facebook: 'Continuer avec Facebook',
+    sign_in_with_phone: 'Continuer avec telephone',
+    or_with_email: 'ou par email',
   }
 };
 const t = k => i18n[currentLang]?.[k] || i18n.en[k] || k;
@@ -1012,6 +1066,7 @@ function trendingCardHTML(r) {
   if (skipped || inLibSkipped) return '';
   return `
     <div class="card trending-card">
+      <button class="card-hide-btn" onclick="event.stopPropagation();openHideReason(${r.id}, '${r.type}', this)" title="Hide">✕</button>
       <div class="card-poster" onclick="openDetail('${r.type}', ${r.id})">
         ${r.poster ? `<img src="${r.poster}" loading="lazy">` : ''}
         <div class="rating-badge">★ ${r.rating?.toFixed(1) || '—'}</div>
@@ -1020,7 +1075,6 @@ function trendingCardHTML(r) {
       <div class="card-year">${r.year || ''}</div>
       <div class="card-quick-actions">
         <button class="quick-btn watchlist" onclick="quickAdd(${r.id}, '${r.type}', 'to_watch', this)">+ ${t('to_watch')}</button>
-        <button class="quick-btn skip" onclick="markNotInterested(${r.id}, '${r.type}', this)">✕</button>
       </div>
     </div>`;
 }
@@ -2098,9 +2152,374 @@ async function processPendingAdd() {
 }
 
 
+// ============================================================
+//   Feature extensions — Tonight, Semantic, Chat, Voice, etc.
+// ============================================================
+
+// ===== Tonight wizard =====
+let tonightAnswers = { viewingContext: null, mood: null, timeBudget: null };
+function openTonightWizard() {
+  tonightAnswers = { viewingContext: null, mood: null, timeBudget: null };
+  document.getElementById('tonightModal').classList.add('active');
+  renderTonightStep(1);
+}
+function closeTonightWizard() { document.getElementById('tonightModal').classList.remove('active'); }
+
+function renderTonightStep(step) {
+  const body = document.getElementById('tonightBody');
+  if (step === 1) {
+    body.innerHTML = `
+      <h2 class="auth-title">${t('tonight_q1')}</h2>
+      <div class="ctx-options" style="margin-top:20px">
+        ${[
+          { k: 'solo', e: '🧘' }, { k: 'couple', e: '💞' },
+          { k: 'family', e: '👨‍👩‍👧' }, { k: 'friends', e: '🎉' },
+        ].map(o => `<button class="ctx-btn" onclick="tonightPick('viewingContext','${o.k}')"><div class="ctx-emoji">${o.e}</div><div>${t('ctx_' + o.k)}</div></button>`).join('')}
+      </div>`;
+  } else if (step === 2) {
+    body.innerHTML = `
+      <h2 class="auth-title">${t('tonight_q2')}</h2>
+      <div class="mood-options" style="margin-top:20px">
+        ${[
+          { k: 'happy', e: '😂' }, { k: 'sad', e: '😢' }, { k: 'scared', e: '😱' },
+          { k: 'mind', e: '🤯' }, { k: 'tired', e: '😴' },
+        ].map(o => `<button class="mood-btn" onclick="tonightPick('mood','${o.k}')"><div class="mood-emoji">${o.e}</div><div>${t('mood_' + o.k)}</div></button>`).join('')}
+      </div>`;
+  } else if (step === 3) {
+    body.innerHTML = `
+      <h2 class="auth-title">${t('tonight_q3')}</h2>
+      <div class="ctx-options" style="margin-top:20px">
+        <button class="ctx-btn" onclick="tonightPick('timeBudget','1h')"><div class="ctx-emoji">⏱️</div><div>${t('time_1h')}</div></button>
+        <button class="ctx-btn" onclick="tonightPick('timeBudget','2h')"><div class="ctx-emoji">🎬</div><div>${t('time_2h')}</div></button>
+        <button class="ctx-btn" onclick="tonightPick('timeBudget','any')"><div class="ctx-emoji">∞</div><div>${t('time_any')}</div></button>
+      </div>`;
+  } else {
+    runTonightRecommendation();
+  }
+}
+function tonightPick(key, value) {
+  tonightAnswers[key] = value;
+  const next = key === 'viewingContext' ? 2 : key === 'mood' ? 3 : 4;
+  renderTonightStep(next);
+}
+async function runTonightRecommendation() {
+  const body = document.getElementById('tonightBody');
+  body.innerHTML = `<div class="recs-loading" style="justify-content:center;padding:40px"><div class="spinner"></div> ${t('tonight_finding')}</div>`;
+  try {
+    const res = await fetch('/api/tonight', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...tonightAnswers,
+        library: library.filter(i => (i.status || 'watched') === 'watched' && i.userRating > 0).slice(0, 30),
+        lang: currentLang,
+      }),
+    });
+    const data = await res.json();
+    const recs = data.recommendations || [];
+    body.innerHTML = `
+      <h2 class="auth-title">${currentLang === 'fr' ? 'Pour toi ce soir' : 'For you tonight'}</h2>
+      <div class="ai-recs-grid" style="margin-top:20px">
+        ${recs.map(r => aiRecCard(r)).join('')}
+      </div>`;
+  } catch (e) { body.innerHTML = `<div style="padding:40px;color:var(--danger)">${e.message}</div>`; }
+}
+
+// ===== Semantic search =====
+async function runSemanticSearch() {
+  const input = document.getElementById('semanticSearchInput');
+  const query = input.value.trim();
+  if (!query) return;
+  const resultsEl = document.getElementById('semanticResults');
+  resultsEl.innerHTML = `<div class="recs-loading" style="margin-top:14px"><div class="spinner"></div> ${t('loading_recs')}</div>`;
+  try {
+    const res = await fetch('/api/semantic-search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, lang: currentLang }),
+    });
+    const data = await res.json();
+    const recs = data.recommendations || [];
+    if (!recs.length) { resultsEl.innerHTML = `<div style="color:var(--text-dim);padding:14px">${currentLang === 'fr' ? 'Aucun resultat' : 'No results'}</div>`; return; }
+    resultsEl.innerHTML = `<div class="ai-recs-grid" style="margin-top:14px">${recs.map(r => aiRecCard(r)).join('')}</div>`;
+  } catch (e) { resultsEl.innerHTML = `<div style="color:var(--danger);padding:14px">${e.message}</div>`; }
+}
+
+// ===== Floating chat =====
+let chatHistory = [];
+function toggleChat() {
+  const panel = document.getElementById('chatPanel');
+  const fab = document.getElementById('chatFab');
+  if (panel.classList.contains('active')) {
+    panel.classList.remove('active');
+    fab.style.display = 'flex';
+  } else {
+    panel.classList.add('active');
+    fab.style.display = 'none';
+    if (chatHistory.length === 0) renderChatMessage('ai', t('chat_welcome'));
+    setTimeout(() => document.getElementById('chatInput').focus(), 300);
+  }
+}
+function renderChatMessage(role, content, picks = []) {
+  const wrap = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `chat-bubble ${role}`;
+  div.textContent = content;
+  if (picks.length) {
+    const picksEl = document.createElement('div');
+    picksEl.className = 'chat-picks';
+    picksEl.innerHTML = picks.map(p => `
+      <div class="chat-pick" onclick="openDetail('${p.type}', ${p.tmdb_id})">
+        ${p.poster ? `<img src="${p.poster}">` : ''}
+        <span>${esc(p.title)}</span>
+      </div>`).join('');
+    div.appendChild(picksEl);
+  }
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  renderChatMessage('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+  const typing = document.createElement('div');
+  typing.className = 'chat-bubble ai';
+  typing.textContent = '...';
+  document.getElementById('chatMessages').appendChild(typing);
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, history: chatHistory.slice(-10), lang: currentLang }),
+    });
+    const data = await res.json();
+    typing.remove();
+    renderChatMessage('ai', data.reply || '...', data.picks || []);
+    chatHistory.push({ role: 'assistant', content: data.reply || '' });
+  } catch (e) {
+    typing.remove();
+    renderChatMessage('ai', 'Error: ' + e.message);
+  }
+}
+
+// ===== Voice search (Web Speech API) =====
+let voiceRec = null;
+function toggleVoiceSearch() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { showToast(t('voice_not_supported')); return; }
+  const micBtn = document.getElementById('micBtn');
+  if (voiceRec) { voiceRec.stop(); voiceRec = null; micBtn.classList.remove('recording'); return; }
+  voiceRec = new SR();
+  voiceRec.lang = currentLang === 'fr' ? 'fr-FR' : 'en-US';
+  voiceRec.interimResults = false;
+  voiceRec.onstart = () => { micBtn.classList.add('recording'); showToast(t('voice_listening')); };
+  voiceRec.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    document.getElementById('searchInput').value = transcript;
+    doSearch(transcript);
+  };
+  voiceRec.onend = () => { micBtn.classList.remove('recording'); voiceRec = null; };
+  voiceRec.onerror = () => { micBtn.classList.remove('recording'); voiceRec = null; };
+  voiceRec.start();
+}
+
+// ===== Card ✕ hide with reason =====
+let hideTarget = null;
+function openHideReason(id, type, btn) {
+  hideTarget = { id, type, btn };
+  document.getElementById('hideReasonModal').style.display = 'flex';
+}
+function closeHideReason() { document.getElementById('hideReasonModal').style.display = 'none'; hideTarget = null; }
+async function submitHideReason(reason) {
+  if (!hideTarget) return;
+  const { id, type, btn } = hideTarget;
+  // Reuse the existing not-interested mechanism with an additional reason log
+  await markNotInterested(id, type, btn);
+  if (sb && currentUser) {
+    await sb.from('user_events').insert({
+      user_id: currentUser.id, event_type: 'hide_feed',
+      tmdb_id: id, media_type: type, metadata: { reason },
+    }).then().catch(() => {});
+  }
+  closeHideReason();
+}
+
+// ===== Seasonal banner =====
+async function loadSeasonalBanner() {
+  try {
+    const culture = localStorage.getItem('seret-culture') || '';
+    const res = await fetch(`/api/seasonal?lang=${currentLang}&culture=${culture}`);
+    const data = await res.json();
+    const slot = document.getElementById('seasonalBanner');
+    if (!slot) return;
+    if (!data.tag || localStorage.getItem('seret-seasonal-disabled') === '1') { slot.innerHTML = ''; return; }
+    slot.innerHTML = `
+      <div class="seasonal-banner">
+        <div class="seasonal-emoji">${data.emoji}</div>
+        <div style="flex:1">
+          <div class="seasonal-title">${esc(data.title)}</div>
+          <div class="seasonal-sub">${esc(data.subtitle)}</div>
+        </div>
+      </div>`;
+  } catch {}
+}
+
+// ===== Friends activity feed =====
+async function loadActivityFeed() {
+  if (!sb || !currentUser || friendsData.length === 0) return;
+  const slot = document.getElementById('activityFeedWrap');
+  if (!slot) return;
+  const friendIds = friendsData.map(f => f.id);
+  const { data } = await sb.from('library_items')
+    .select('user_id, title, year, media_type, user_rating, added_at')
+    .in('user_id', friendIds).gt('user_rating', 0)
+    .order('added_at', { ascending: false }).limit(10);
+  if (!data || !data.length) return;
+  const verb = t('just_watched');
+  slot.innerHTML = `
+    <h2 class="section-title" style="margin-top:40px">${t('activity_feed_title')}</h2>
+    <div class="activity-feed">
+      ${data.map(a => {
+        const f = friendsData.find(x => x.id === a.user_id);
+        const name = esc(f?.name || '?');
+        const time = timeAgo(new Date(a.added_at).getTime());
+        const fire = a.user_rating >= 9 ? ' 🔥' : '';
+        return `<div class="activity-item">
+          <div class="activity-avatar">${f?.avatar ? `<img src="${f.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : '👤'}</div>
+          <div class="activity-text"><strong>${name}</strong> ${verb} <strong>${esc(a.title)}</strong>${fire} ${a.user_rating}/10</div>
+          <div class="activity-time">${time}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+function timeAgo(ts) {
+  const s = (Date.now() - ts) / 1000;
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h';
+  if (s < 86400 * 7) return Math.floor(s / 86400) + 'd';
+  return Math.floor(s / 86400 / 7) + 'w';
+}
+
+// ===== Stories 24h =====
+async function publishStory(item) {
+  if (!sb || !currentUser || !activeProfile) return;
+  try {
+    await sb.from('stories').insert({
+      user_id: currentUser.id, profile_id: activeProfile.id,
+      tmdb_id: item.id, media_type: item.type,
+      title: item.title, poster: item.poster,
+      rating: item.userRating,
+      expires_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+    });
+  } catch (e) { /* table may not exist yet — silent */ }
+}
+async function loadStories() {
+  if (!sb || !currentUser || friendsData.length === 0) return;
+  const slot = document.getElementById('storiesStrip');
+  if (!slot) return;
+  const friendIds = friendsData.map(f => f.id);
+  try {
+    const { data } = await sb.from('stories')
+      .select('id, user_id, title, poster, rating, created_at')
+      .in('user_id', friendIds)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false }).limit(20);
+    if (!data || !data.length) { slot.innerHTML = ''; return; }
+    // Group by friend
+    const byFriend = new Map();
+    for (const s of data) {
+      if (!byFriend.has(s.user_id)) byFriend.set(s.user_id, []);
+      byFriend.get(s.user_id).push(s);
+    }
+    window._allStories = data;
+    slot.innerHTML = `
+      <div class="stories-strip">
+        ${[...byFriend.entries()].map(([fid, stories]) => {
+          const f = friendsData.find(x => x.id === fid);
+          return `<div class="story-tile" onclick="openStory('${fid}')">
+            <div class="story-avatar">${f?.avatar ? `<img src="${f.avatar}">` : `<img src="${stories[0].poster}">`}</div>
+            <div class="story-name">${esc(f?.name || '?')}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch { slot.innerHTML = ''; }
+}
+function openStory(friendId) {
+  const stories = (window._allStories || []).filter(s => s.user_id === friendId);
+  if (!stories.length) return;
+  const s = stories[0];
+  const f = friendsData.find(x => x.id === friendId);
+  document.getElementById('storyCardBody').innerHTML = `
+    <img class="poster-bg" src="${s.poster}" alt="">
+    <div class="story-overlay">
+      <div class="story-author">${esc(f?.name || '?')} ${t('just_watched')}</div>
+      <div class="story-title">${esc(s.title)}</div>
+      <div class="story-score">${s.rating}/10 🔥</div>
+      <div class="story-reactions">
+        ${['🔥','❤️','😱','😂'].map(e => `<button onclick="sendStoryReaction(${s.id}, '${e}', this)">${e}</button>`).join('')}
+      </div>
+    </div>`;
+  document.getElementById('storyViewer').classList.add('active');
+}
+function closeStoryViewer() { document.getElementById('storyViewer').classList.remove('active'); }
+async function sendStoryReaction(storyId, emoji, btn) {
+  if (!sb || !currentUser) return;
+  btn.classList.add('active');
+  try {
+    await sb.from('story_reactions').insert({ story_id: storyId, user_id: currentUser.id, emoji });
+  } catch {}
+}
+
+// ===== Watchlist humor reminder =====
+function checkWatchlistReminders() {
+  const wl = library.filter(l => l.status === 'to_watch');
+  const old = wl.filter(l => (Date.now() - (l.addedAt || 0)) > 180 * 24 * 3600 * 1000); // 6+ months
+  if (old.length === 0) return;
+  const pick = old[Math.floor(Math.random() * old.length)];
+  setTimeout(() => {
+    const msg = currentLang === 'fr'
+      ? `⏰ ${pick.title} — tu l'as ajoute il y a longtemps. C'est le moment ?`
+      : `⏰ ${pick.title} — you added this ages ago. Tonight's the night?`;
+    showToast(msg, 6000);
+  }, 8000);
+}
+
+// ===== OAuth sign-in (Supabase) =====
+async function signInOAuth(provider) {
+  if (!sb) return showToast('Supabase not configured');
+  try {
+    await sb.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+  } catch (e) { showToast('Error: ' + e.message); }
+}
+function signInWithGoogle() { signInOAuth('google'); }
+function signInWithApple() { signInOAuth('apple'); }
+function signInWithFacebook() { signInOAuth('facebook'); }
+
+// ===== Actor/director search (detects if the query is a person) =====
+async function detectPersonSearch(q) {
+  try {
+    const res = await fetch(`/api/person-search?q=${encodeURIComponent(q)}&lang=${currentLang === 'fr' ? 'fr-FR' : 'en-US'}`);
+    return await res.json();
+  } catch { return null; }
+}
+
+// ===== Hook seasonal + stories + activity on home init and auth change =====
+const _origOnAuthChange = onAuthChange;
+onAuthChange = async function () {
+  await _origOnAuthChange.apply(this, arguments);
+  loadSeasonalBanner().catch(() => {});
+  loadStories().catch(() => {});
+  loadActivityFeed().catch(() => {});
+  checkWatchlistReminders();
+};
+
 // ===== Init =====
 applyLang();
 capturePendingAddFromURL();
 loadTrending();
+loadSeasonalBanner().catch(() => {});
 initSupabase();
 checkReminder();

@@ -364,6 +364,38 @@ app.post('/api/semantic-search', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== Actor / director search =====
+app.get('/api/person-search', async (req, res) => {
+  const { q, lang = 'en-US' } = req.query;
+  if (!q) return res.json({ person: null });
+  if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
+  try {
+    const search = await tmdbFetch('/search/person', { query: q, language: lang });
+    const p = (search.results || [])[0];
+    if (!p) return res.json({ person: null });
+    const details = await tmdbFetch(`/person/${p.id}`, { language: lang, append_to_response: 'combined_credits' });
+    const credits = (details.combined_credits?.cast || [])
+      .concat(details.combined_credits?.crew || [])
+      .filter(c => c.media_type === 'movie' || c.media_type === 'tv')
+      .filter(isAppropriate);
+    // Dedupe by id, sort by popularity
+    const seen = new Set();
+    const unique = credits
+      .filter(c => { const k = `${c.id}_${c.media_type}`; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+      .slice(0, 40)
+      .map(mapItem);
+    res.json({
+      person: {
+        id: p.id, name: p.name, known_for: p.known_for_department,
+        profile: p.profile_path ? `https://image.tmdb.org/t/p/w342${p.profile_path}` : null,
+        biography: details.biography,
+      },
+      credits: unique,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== "Tonight we watch" wizard =====
 app.post('/api/tonight', async (req, res) => {
   const { viewingContext = 'solo', mood = null, timeBudget = null, library = [], lang = 'en' } = req.body;
@@ -602,6 +634,144 @@ app.post('/api/wrapped', async (req, res) => {
     const top = [...thisYear].sort((a, b) => (b.userRating || 0) - (a.userRating || 0)).slice(0, 5);
     res.json({ year, total: thisYear.length, movies, shows, fiveStars, avgRating, top });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== Legal pages =====
+function legalPage(title, bodyFr, bodyEn) {
+  return `<!doctype html>
+<html lang="en" data-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${title} — Seret</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body{padding:40px 20px;max-width:760px;margin:0 auto;line-height:1.7}
+  h1{font-family:var(--serif);font-size:36px;color:var(--text-bright);margin-bottom:8px}
+  h2{font-family:var(--serif);font-size:22px;color:var(--text-bright);margin-top:32px}
+  p,li{color:var(--text)}
+  a{color:var(--gold)}
+  .back{color:var(--text-dim);font-size:13px;margin-bottom:20px;display:inline-block}
+  .lang{float:right;color:var(--text-dim);font-size:13px}
+</style></head><body>
+<a class="back" href="/">← Seret</a>
+<span class="lang"><a href="?lang=en">EN</a> · <a href="?lang=fr">FR</a></span>
+<div id="en">${bodyEn}</div>
+<div id="fr" style="display:none">${bodyFr}</div>
+<script>
+  const p = new URLSearchParams(location.search);
+  const lang = p.get('lang') || (navigator.language || '').startsWith('fr') ? 'fr' : 'en';
+  if (lang === 'fr') { document.getElementById('fr').style.display = 'block'; document.getElementById('en').style.display = 'none'; }
+</script>
+</body></html>`;
+}
+
+app.get('/privacy', (req, res) => {
+  const enBody = `
+<h1>Privacy Policy</h1>
+<p><em>Last updated: ${new Date().toLocaleDateString('en-GB')}</em></p>
+<h2>What we collect</h2>
+<ul>
+  <li><strong>Account info</strong> — email, display name, avatar (if you sign up)</li>
+  <li><strong>Your library</strong> — films/series you add, your ratings, your private journal entries</li>
+  <li><strong>Social data</strong> — your friends connections, recommendations you send/receive</li>
+  <li><strong>Usage analytics</strong> — events (rate, add, skip) to improve Seret AI recommendations</li>
+</ul>
+<h2>What we DON'T collect</h2>
+<ul>
+  <li>No tracking cookies beyond your session</li>
+  <li>No ad networks, no third-party analytics that profile you</li>
+  <li>We never sell your data</li>
+</ul>
+<h2>Third-party services</h2>
+<ul>
+  <li><strong>TMDB</strong> — film metadata. This product uses the TMDB API but is not endorsed or certified by TMDB.</li>
+  <li><strong>Supabase</strong> — database and authentication</li>
+  <li><strong>Anthropic Claude</strong> — powers Seret AI recommendations. Your messages are sent to them for processing; no user identifiers are attached.</li>
+</ul>
+<h2>Your rights</h2>
+<ul>
+  <li>Export your data at any time — contact us</li>
+  <li>Delete your account from Settings → Sign out → "Delete my account" (or email us)</li>
+</ul>
+<h2>Contact</h2>
+<p>Questions or data requests: <a href="mailto:kouty@elevon.fr">kouty@elevon.fr</a></p>`;
+
+  const frBody = `
+<h1>Politique de confidentialité</h1>
+<p><em>Dernière mise à jour : ${new Date().toLocaleDateString('fr-FR')}</em></p>
+<h2>Ce que nous collectons</h2>
+<ul>
+  <li><strong>Infos compte</strong> — email, nom affiché, avatar (si inscription)</li>
+  <li><strong>Votre bibliothèque</strong> — films/séries ajoutés, notes, journal privé</li>
+  <li><strong>Données sociales</strong> — amis, recommandations envoyées/reçues</li>
+  <li><strong>Analytics d'usage</strong> — événements (noter, ajouter, passer) pour améliorer Seret AI</li>
+</ul>
+<h2>Ce que nous NE collectons PAS</h2>
+<ul>
+  <li>Pas de cookies de tracking au-delà de votre session</li>
+  <li>Pas de régies publicitaires, pas d'analytics tiers qui vous profilent</li>
+  <li>Nous ne vendons jamais vos données</li>
+</ul>
+<h2>Services tiers</h2>
+<ul>
+  <li><strong>TMDB</strong> — métadonnées films. Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB.</li>
+  <li><strong>Supabase</strong> — base de données et authentification</li>
+  <li><strong>Anthropic Claude</strong> — propulse Seret AI. Vos messages sont envoyés pour traitement ; aucun identifiant utilisateur n'est joint.</li>
+</ul>
+<h2>Vos droits</h2>
+<ul>
+  <li>Export de vos données à tout moment — contactez-nous</li>
+  <li>Suppression de compte dans Paramètres → Déconnexion → "Supprimer mon compte" (ou par email)</li>
+</ul>
+<h2>Contact</h2>
+<p>Questions ou demandes RGPD : <a href="mailto:kouty@elevon.fr">kouty@elevon.fr</a></p>`;
+
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(legalPage('Privacy', frBody, enBody));
+});
+
+app.get('/terms', (req, res) => {
+  const enBody = `
+<h1>Terms of Service</h1>
+<p><em>Last updated: ${new Date().toLocaleDateString('en-GB')}</em></p>
+<h2>Using Seret</h2>
+<p>Seret is a personal cinema library and AI recommendation service. You agree to use it respectfully and not for illegal purposes.</p>
+<h2>Your content</h2>
+<p>Your journal entries, ratings, comments remain yours. You grant us the right to store and display them within Seret (to you and, if you choose, to your friends).</p>
+<h2>Age</h2>
+<p>You must be 13 or older to use Seret. Minors should have parental supervision.</p>
+<h2>No warranty</h2>
+<p>Seret is provided "as is". AI recommendations are opinions, not professional advice.</p>
+<h2>Termination</h2>
+<p>You can delete your account at any time. We reserve the right to suspend accounts that violate these terms.</p>
+<h2>TMDB</h2>
+<p>This product uses the TMDB API but is not endorsed or certified by TMDB. Film metadata belongs to TMDB and its contributors.</p>
+<h2>Changes</h2>
+<p>These terms may evolve. Material changes will be announced via in-app notice.</p>
+<h2>Contact</h2>
+<p><a href="mailto:kouty@elevon.fr">kouty@elevon.fr</a></p>`;
+
+  const frBody = `
+<h1>Conditions d'utilisation</h1>
+<p><em>Dernière mise à jour : ${new Date().toLocaleDateString('fr-FR')}</em></p>
+<h2>Utiliser Seret</h2>
+<p>Seret est une bibliothèque de cinéma personnelle avec recommandations IA. Vous vous engagez à l'utiliser avec respect et à des fins légales.</p>
+<h2>Votre contenu</h2>
+<p>Vos notes, journaux, commentaires vous appartiennent. Vous nous accordez le droit de les stocker et afficher dans Seret (à vous et, si vous le souhaitez, à vos amis).</p>
+<h2>Âge</h2>
+<p>Vous devez avoir 13 ans ou plus pour utiliser Seret. Les mineurs doivent être accompagnés par leurs parents.</p>
+<h2>Sans garantie</h2>
+<p>Seret est fourni "tel quel". Les recommandations IA sont des opinions, pas des conseils professionnels.</p>
+<h2>Résiliation</h2>
+<p>Vous pouvez supprimer votre compte à tout moment. Nous nous réservons le droit de suspendre les comptes qui violent ces conditions.</p>
+<h2>TMDB</h2>
+<p>Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB. Les métadonnées appartiennent à TMDB et ses contributeurs.</p>
+<h2>Modifications</h2>
+<p>Ces conditions peuvent évoluer. Les changements significatifs seront annoncés dans l'app.</p>
+<h2>Contact</h2>
+<p><a href="mailto:kouty@elevon.fr">kouty@elevon.fr</a></p>`;
+
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(legalPage('Terms', frBody, enBody));
 });
 
 const PORT = process.env.PORT || 3333;
