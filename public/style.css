@@ -446,8 +446,10 @@ main { padding-top: 68px; }
   align-items: center; justify-content: center;
   gap: 8px; opacity: 0;
   transition: var(--transition);
+  pointer-events: none;
 }
-.card:hover .card-library-actions { opacity: 1; }
+.card-library-actions .btn { pointer-events: auto; }
+.card:hover .card-library-actions { opacity: 1; pointer-events: auto; }
 
 /* ===== Stars ===== */
 .user-rating {
