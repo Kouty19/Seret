@@ -17,21 +17,54 @@ app.get('/api/config', (req, res) => {
   res.json({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
 });
 
+// TMDB supports two auth schemes: v3 api_key (short hex string) or v4 Bearer token (JWT starting with eyJ).
+// We auto-detect which one the user configured so either works.
+const TMDB_IS_V4 = TMDB_API_KEY.startsWith('eyJ');
+
 function tmdbFetch(endpoint, params = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(`https://api.themoviedb.org/3${endpoint}`);
-    url.searchParams.set('api_key', TMDB_API_KEY);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    https.get(url.toString(), { headers: { Accept: 'application/json' } }, (res) => {
+    const headers = { Accept: 'application/json' };
+    if (TMDB_IS_V4) headers.Authorization = `Bearer ${TMDB_API_KEY}`;
+    else url.searchParams.set('api_key', TMDB_API_KEY);
+    https.get(url.toString(), { headers }, (res) => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch { resolve({ results: [] }); }
+        try {
+          const json = JSON.parse(data);
+          if (res.statusCode >= 400 || json.success === false) {
+            console.error(`[TMDB] ${res.statusCode} on ${endpoint}: ${json.status_message || data.slice(0, 200)}`);
+          }
+          resolve(json);
+        } catch {
+          console.error(`[TMDB] Parse fail on ${endpoint}: ${data.slice(0, 200)}`);
+          resolve({ results: [] });
+        }
       });
-    }).on('error', reject);
+    }).on('error', (err) => {
+      console.error(`[TMDB] Network error on ${endpoint}:`, err.message);
+      reject(err);
+    });
   });
 }
+
+// Diagnostic endpoint: surfaces TMDB auth errors instead of silently returning empty.
+app.get('/api/tmdb-debug', async (req, res) => {
+  if (!TMDB_API_KEY) return res.json({ ok: false, reason: 'TMDB_API_KEY not set' });
+  try {
+    const data = await tmdbFetch('/movie/popular', { page: 1 });
+    res.json({
+      ok: data.success !== false && Array.isArray(data.results),
+      auth_scheme: TMDB_IS_V4 ? 'v4-bearer' : 'v3-api-key',
+      key_prefix: TMDB_API_KEY.slice(0, 8) + '…',
+      tmdb_response: data.success === false ? data : { results_count: (data.results || []).length },
+    });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
 
 function isAppropriate(r) {
   if (r.adult === true) return false;
