@@ -8,7 +8,10 @@ let currentUser = null;
 let userProfile = null;
 let userProfiles = []; // sub-profiles
 let activeProfile = null; // currently selected sub-profile
-let currentLang = localStorage.getItem('seret-lang') || 'en';
+let currentLang = localStorage.getItem('seret-lang') || (function() {
+  const nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return ['en','fr','es','de','pt','ru','he','ar'].includes(nav) ? nav : 'en';
+})();
 let library = [];
 let calibrationData = [];
 let heroItem = null;
@@ -288,17 +291,133 @@ const i18n = {
     push_enable: 'Activer les notifications', push_enabled: 'Notifications activees',
     push_new_season: 'Nouvelle saison disponible',
     cinema_night: 'Soiree cinema', create_poll: 'Creer un sondage',
-  }
+  },
+  // Additional languages — partial coverage focused on the most visible UI.
+  // Any missing key falls back to EN via the `t()` helper.
+  es: {
+    search_placeholder: 'Buscar películas y series...',
+    nav_home: 'Inicio', nav_library: 'Biblioteca', nav_ai: 'Seret AI',
+    nav_friends: 'Amigos', nav_wrapped: 'Wrapped', nav_learn: 'Aprender',
+    trending: 'Tendencias', my_library: 'Mi biblioteca',
+    seen: 'Visto', to_watch: 'Por ver', details: 'Detalles',
+    sign_in: 'Iniciar sesión', sign_out: 'Cerrar sesión',
+    get_recs: 'Obtener recomendaciones', surprise_me: 'Sorpréndeme',
+    tonight_cta: '¿Qué vemos esta noche?',
+    tonight_cta_sub: 'Seret AI encuentra la película perfecta en 10 segundos',
+    semantic_label: '✨ Describe lo que buscas a Seret AI',
+    semantic_go: 'Buscar',
+    your_rating: 'Tu nota', your_review: 'Tu reseña',
+    share_whatsapp: 'Compartir en WhatsApp',
+    settings_title: 'Ajustes', world_cinema: 'Cine mundial',
+    copy: 'Copiar', invite: 'Invitar', back: 'Volver', cancel: 'Cancelar',
+  },
+  de: {
+    search_placeholder: 'Filme & Serien suchen...',
+    nav_home: 'Start', nav_library: 'Bibliothek', nav_ai: 'Seret AI',
+    nav_friends: 'Freunde', nav_wrapped: 'Wrapped', nav_learn: 'Lernen',
+    trending: 'Trends', my_library: 'Meine Bibliothek',
+    seen: 'Gesehen', to_watch: 'Will sehen', details: 'Details',
+    sign_in: 'Anmelden', sign_out: 'Abmelden',
+    get_recs: 'Empfehlungen holen', surprise_me: 'Überrasch mich',
+    tonight_cta: 'Was schauen wir heute Abend?',
+    tonight_cta_sub: 'Seret AI findet den perfekten Film in 10 Sekunden',
+    semantic_label: '✨ Beschreibe was du suchst',
+    semantic_go: 'Suchen',
+    your_rating: 'Deine Bewertung', your_review: 'Dein Review',
+    share_whatsapp: 'Auf WhatsApp teilen',
+    settings_title: 'Einstellungen', world_cinema: 'Weltkino',
+    copy: 'Kopieren', invite: 'Einladen', back: 'Zurück', cancel: 'Abbrechen',
+  },
+  pt: {
+    search_placeholder: 'Buscar filmes e séries...',
+    nav_home: 'Início', nav_library: 'Biblioteca', nav_ai: 'Seret AI',
+    nav_friends: 'Amigos', nav_wrapped: 'Wrapped', nav_learn: 'Aprender',
+    trending: 'Em alta', my_library: 'Minha biblioteca',
+    seen: 'Assistido', to_watch: 'Para ver', details: 'Detalhes',
+    sign_in: 'Entrar', sign_out: 'Sair',
+    get_recs: 'Obter recomendações', surprise_me: 'Me surpreenda',
+    tonight_cta: 'O que assistimos hoje?',
+    tonight_cta_sub: 'Seret AI encontra o filme perfeito em 10 segundos',
+    semantic_label: '✨ Descreva o que procura',
+    semantic_go: 'Buscar',
+    your_rating: 'Sua nota', your_review: 'Sua crítica',
+    share_whatsapp: 'Compartilhar no WhatsApp',
+    settings_title: 'Ajustes', world_cinema: 'Cinema mundial',
+    copy: 'Copiar', invite: 'Convidar', back: 'Voltar', cancel: 'Cancelar',
+  },
+  ru: {
+    search_placeholder: 'Поиск фильмов и сериалов...',
+    nav_home: 'Главная', nav_library: 'Библиотека', nav_ai: 'Seret AI',
+    nav_friends: 'Друзья', nav_wrapped: 'Wrapped', nav_learn: 'Учиться',
+    trending: 'В тренде', my_library: 'Моя библиотека',
+    seen: 'Просмотрено', to_watch: 'Смотреть', details: 'Подробнее',
+    sign_in: 'Войти', sign_out: 'Выйти',
+    get_recs: 'Получить рекомендации', surprise_me: 'Удиви меня',
+    tonight_cta: 'Что смотрим сегодня вечером?',
+    tonight_cta_sub: 'Seret AI найдёт идеальный фильм за 10 секунд',
+    semantic_label: '✨ Опишите что ищете',
+    semantic_go: 'Искать',
+    your_rating: 'Ваша оценка', your_review: 'Ваш отзыв',
+    share_whatsapp: 'Поделиться в WhatsApp',
+    settings_title: 'Настройки', world_cinema: 'Мировое кино',
+    copy: 'Копировать', invite: 'Пригласить', back: 'Назад', cancel: 'Отмена',
+  },
+  // Hebrew — RTL
+  he: {
+    search_placeholder: 'חיפוש סרטים וסדרות...',
+    nav_home: 'בית', nav_library: 'הספרייה שלי', nav_ai: 'Seret AI',
+    nav_friends: 'חברים', nav_wrapped: 'Wrapped', nav_learn: 'ללמוד',
+    trending: 'טרנדים', my_library: 'הספרייה שלי',
+    seen: 'נצפה', to_watch: 'לצפייה', details: 'פרטים',
+    sign_in: 'התחברות', sign_out: 'התנתקות',
+    get_recs: 'קבל המלצות', surprise_me: 'הפתע אותי',
+    tonight_cta: 'מה נראה הערב?',
+    tonight_cta_sub: 'Seret AI מוצאת את הסרט המושלם תוך 10 שניות',
+    semantic_label: '✨ תאר מה אתה מחפש',
+    semantic_go: 'חפש',
+    your_rating: 'הדירוג שלך', your_review: 'הביקורת שלך',
+    share_whatsapp: 'שתף ב-WhatsApp',
+    settings_title: 'הגדרות', world_cinema: 'קולנוע עולמי',
+    copy: 'העתק', invite: 'הזמן', back: 'חזרה', cancel: 'ביטול',
+  },
+  // Arabic — RTL
+  ar: {
+    search_placeholder: 'البحث عن أفلام ومسلسلات...',
+    nav_home: 'الرئيسية', nav_library: 'مكتبتي', nav_ai: 'Seret AI',
+    nav_friends: 'الأصدقاء', nav_wrapped: 'Wrapped', nav_learn: 'تعلم',
+    trending: 'الرائج', my_library: 'مكتبتي',
+    seen: 'شُوهد', to_watch: 'للمشاهدة', details: 'تفاصيل',
+    sign_in: 'تسجيل الدخول', sign_out: 'تسجيل الخروج',
+    get_recs: 'احصل على توصيات', surprise_me: 'فاجئني',
+    tonight_cta: 'ماذا نشاهد الليلة؟',
+    tonight_cta_sub: 'يعثر Seret AI على الفيلم المثالي في 10 ثوان',
+    semantic_label: '✨ صف ما تبحث عنه',
+    semantic_go: 'بحث',
+    your_rating: 'تقييمك', your_review: 'مراجعتك',
+    share_whatsapp: 'مشاركة عبر WhatsApp',
+    settings_title: 'الإعدادات', world_cinema: 'السينما العالمية',
+    copy: 'نسخ', invite: 'دعوة', back: 'رجوع', cancel: 'إلغاء',
+  },
 };
+const RTL_LANGS = ['he', 'ar'];
+const SUPPORTED_LANGS = ['en', 'fr', 'es', 'de', 'pt', 'ru', 'he', 'ar'];
 const t = k => i18n[currentLang]?.[k] || i18n.en[k] || k;
 
 function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
-  document.getElementById('langBtn').textContent = currentLang === 'en' ? 'FR' : 'EN';
+  // RTL support for Hebrew & Arabic
+  const isRTL = RTL_LANGS.includes(currentLang);
+  document.documentElement.setAttribute('dir', isRTL ? 'rtl' : 'ltr');
+  document.documentElement.setAttribute('lang', currentLang);
+  // Language toggle button shows next language in a rotation
+  const btn = document.getElementById('langBtn');
+  if (btn) btn.textContent = currentLang.toUpperCase();
 }
 function toggleLang() {
-  currentLang = currentLang === 'en' ? 'fr' : 'en';
+  // Cycle through supported langs so all 8 are reachable from the header button
+  const idx = SUPPORTED_LANGS.indexOf(currentLang);
+  currentLang = SUPPORTED_LANGS[(idx + 1) % SUPPORTED_LANGS.length];
   localStorage.setItem('seret-lang', currentLang);
   applyLang();
   loadTrending();

@@ -2230,6 +2230,29 @@ main { padding-top: 68px; }
 }
 .teaser-banner .btn { flex-shrink: 0; }
 
+/* ===== RTL support (Hebrew, Arabic) ===== */
+html[dir="rtl"] body { direction: rtl; }
+html[dir="rtl"] .header-inner { direction: rtl; }
+html[dir="rtl"] .search-icon { left: auto; right: 16px; }
+html[dir="rtl"] .search-wrapper input { padding: 0 46px 0 46px; }
+html[dir="rtl"] .mic-btn { right: auto; left: 44px; }
+html[dir="rtl"] .modal-back-btn { left: auto; right: 20px; }
+html[dir="rtl"] .modal-back-btn svg { transform: scaleX(-1); }
+html[dir="rtl"] .modal-close { left: 20px; right: auto; }
+html[dir="rtl"] .tonight-cta { text-align: right; }
+html[dir="rtl"] .semantic-search-row,
+html[dir="rtl"] .chat-input-row,
+html[dir="rtl"] .modal-actions,
+html[dir="rtl"] .modal-header-row { direction: rtl; }
+html[dir="rtl"] .card-library-actions { direction: rtl; }
+html[dir="rtl"] .seasonal-banner { border-left: none; border-right: 3px solid var(--gold); }
+html[dir="rtl"] .prediction-box,
+html[dir="rtl"] .modal-user-rating,
+html[dir="rtl"] .journal-box.prominent { border-left: none; border-right: 3px solid var(--gold); }
+html[dir="rtl"] .chat-fab { right: auto; left: 16px; }
+html[dir="rtl"] .card-hide-btn { right: auto; left: 8px; }
+html[dir="rtl"] .user-rating { flex-direction: row-reverse; }
+
 /* ===== TV Tonight ===== */
 .tv-tonight-list { display: flex; flex-direction: column; gap: 10px; }
 .tv-item {
