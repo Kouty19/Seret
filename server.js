@@ -1228,6 +1228,29 @@ app.get('/terms', (req, res) => {
   res.send(legalPage('Terms', frBody, enBody));
 });
 
+// ===== Centralised error logger (structured) =====
+// Fires only for 5xx responses (client errors aren't alert-worthy). Errors land
+// in Vercel logs where they can be tailed via `vercel logs` or piped to an
+// external drain (Datadog, Logtail, Axiom) if you add a log drain integration.
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  if (status >= 500) {
+    console.error(JSON.stringify({
+      t: new Date().toISOString(),
+      lvl: 'error', method: req.method, url: req.originalUrl,
+      status, msg: err.message,
+      ip: (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim(),
+      ua: String(req.headers['user-agent'] || '').slice(0, 120),
+    }));
+  }
+  if (!res.headersSent) res.status(status).json({ error: err.message || 'Server error' });
+});
+
+// 404 handler — keeps unknown /api/* quiet and JSON
+app.use('/api/', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
   console.log(`\n  🎬 Seret is running at http://localhost:${PORT}\n`);
