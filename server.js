@@ -6,6 +6,8 @@ const https = require('https');
 const app = express();
 // Behind Vercel, trust the X-Forwarded-For header so rate-limiting uses the real client IP
 app.set('trust proxy', 1);
+// Don't advertise Express version/fingerprint
+app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
