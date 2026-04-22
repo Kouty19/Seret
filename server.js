@@ -955,6 +955,102 @@ app.get('/privacy', (req, res) => {
   res.send(legalPage('Privacy', frBody, enBody));
 });
 
+app.get('/schools', (req, res) => {
+  const html = `<!doctype html>
+<html lang="en" data-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Seret for Schools</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { padding: 60px 20px; max-width: 860px; margin: 0 auto; }
+  .hero-school { text-align: center; padding: 40px 0; }
+  .hero-school h1 { font-family: var(--serif); font-size: 48px; color: var(--text-bright); margin-bottom: 12px; }
+  .hero-school p { color: var(--text); font-size: 18px; max-width: 560px; margin: 0 auto; line-height: 1.6; }
+  .school-form { background: var(--bg-2); border: 1px solid var(--border); border-radius: 18px; padding: 28px; margin: 30px 0; }
+  .school-form label { display: block; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin: 14px 0 6px; }
+  .school-form input, .school-form select { width: 100%; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; color: var(--text); font-size: 14px; outline: none; }
+  .film-card { display: flex; gap: 16px; padding: 18px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 12px; }
+  .film-card img { width: 90px; height: 135px; border-radius: 10px; object-fit: cover; }
+  .film-card-body { flex: 1; }
+  .film-card h3 { font-family: var(--serif); font-size: 18px; margin: 0 0 6px; color: var(--text-bright); }
+  .film-card .q { margin-top: 10px; padding: 10px 14px; background: var(--bg); border-left: 3px solid var(--gold); border-radius: 8px; font-style: italic; }
+  .back { color: var(--text-dim); font-size: 13px; }
+  .pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 30px 0; }
+  .tier { background: var(--bg-2); border: 1px solid var(--border); border-radius: 16px; padding: 24px; text-align: center; }
+  .tier h4 { font-family: var(--serif); font-size: 20px; color: var(--text-bright); margin: 0 0 4px; }
+  .tier .p { font-size: 28px; color: var(--gold); font-family: var(--serif); font-weight: 800; margin: 6px 0; }
+</style></head><body>
+<a class="back" href="/">← Seret</a>
+<div class="hero-school">
+  <h1>🎓 Seret for Schools</h1>
+  <p>Du cinéma au service de l'apprentissage. Sélections pédagogiques par thème, âge et discipline — avec questions de compréhension prêtes à l'emploi.</p>
+</div>
+<div class="school-form">
+  <label>Thème du cours</label>
+  <input type="text" id="topic" placeholder="La Révolution française, le cycle de l'eau, la Shoah...">
+  <label>Tranche d'âge</label>
+  <select id="ageRange">
+    <option value="7-10">7-10 ans</option>
+    <option value="11-14" selected>11-14 ans</option>
+    <option value="15-18">15-18 ans</option>
+    <option value="adult">Adultes / université</option>
+  </select>
+  <button class="btn btn-gold btn-lg" style="margin-top:20px;width:100%;justify-content:center" onclick="runClass()">
+    Générer une sélection
+  </button>
+  <div id="classResults" style="margin-top:20px"></div>
+</div>
+<div class="pricing">
+  <div class="tier">
+    <h4>Classe</h4>
+    <div class="p">500€<span style="font-size:14px;color:var(--text-dim)">/an</span></div>
+    <div style="color:var(--text-dim);font-size:13px">Jusqu'à 30 élèves</div>
+  </div>
+  <div class="tier">
+    <h4>École</h4>
+    <div class="p">1500€<span style="font-size:14px;color:var(--text-dim)">/an</span></div>
+    <div style="color:var(--text-dim);font-size:13px">Jusqu'à 300 élèves</div>
+  </div>
+  <div class="tier">
+    <h4>Académie</h4>
+    <div class="p">2000€<span style="font-size:14px;color:var(--text-dim)">/an</span></div>
+    <div style="color:var(--text-dim);font-size:13px">Illimité + support</div>
+  </div>
+</div>
+<p style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:40px">
+  Pour souscrire ou découvrir une démo personnalisée :
+  <a href="mailto:kouty@elevon.fr?subject=Seret%20for%20Schools" style="color:var(--gold)">kouty@elevon.fr</a>
+</p>
+<script>
+async function runClass() {
+  const topic = document.getElementById('topic').value.trim();
+  const ageRange = document.getElementById('ageRange').value;
+  if (!topic) return;
+  const results = document.getElementById('classResults');
+  results.innerHTML = '<div class="recs-loading"><div class="spinner"></div> Sélection en cours...</div>';
+  try {
+    const r = await fetch('/api/class/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, ageRange, lang: (navigator.language || '').startsWith('fr') ? 'fr' : 'en' }),
+    });
+    const d = await r.json();
+    results.innerHTML = (d.films || []).map(f => \`
+      <div class="film-card">
+        \${f.poster ? \`<img src="\${f.poster}">\` : ''}
+        <div class="film-card-body">
+          <h3>\${f.title} <span style="color:var(--text-dim);font-weight:400;font-size:14px">(\${f.year})</span></h3>
+          <div style="font-size:13px;color:var(--text)">\${(f.overview || '').slice(0, 200)}\${(f.overview || '').length > 200 ? '...' : ''}</div>
+          <div class="q"><strong>Question après visionnage :</strong> \${f.question}</div>
+        </div>
+      </div>\`).join('') || '<p style="color:var(--text-dim)">Aucun résultat.</p>';
+  } catch (e) { results.innerHTML = '<p style="color:var(--danger)">' + e.message + '</p>'; }
+}
+</script>
+</body></html>`;
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
 app.get('/premium', (req, res) => {
   const html = `<!doctype html>
 <html lang="en" data-theme="dark"><head>
