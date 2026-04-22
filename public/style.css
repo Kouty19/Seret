@@ -1931,6 +1931,14 @@ main { padding-top: 68px; }
 .friend-rating-score { color: var(--gold); font-weight: 700; }
 .friend-ratings-avg { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
 .friend-ratings-avg strong { color: var(--gold); }
+.seret-score {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.seret-score-label { font-size: 10px; color: var(--gold); text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
+.seret-score-value { font-family: var(--serif); font-size: 28px; color: var(--gold); font-weight: 800; }
+.seret-score-sub { font-size: 11px; color: var(--text-dim); font-style: italic; }
 
 /* ===== AI rating prediction box ===== */
 .prediction-box {
