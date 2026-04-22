@@ -4,9 +4,107 @@ const path = require('path');
 const https = require('https');
 
 const app = express();
+// Behind Vercel, trust the X-Forwarded-For header so rate-limiting uses the real client IP
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
+
+// ===== Security headers =====
+// Written manually so we avoid an extra dependency on Helmet. These are the
+// same defaults Helmet would set, minus anything that breaks the app.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  // Vercel already sets HSTS on HTTPS; setting here is a belt-and-suspenders
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  // CSP: allow our own assets + jsdelivr (supabase SDK) + Google Fonts + TMDB images + qrserver (friend QR) + youtube embeds
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: https://image.tmdb.org https://api.qrserver.com https://api.tvmaze.com https://*.supabase.co https://static-cdn.jtvnw.net",
+    "font-src 'self' https://fonts.gstatic.com",
+    "connect-src 'self' https://*.supabase.co https://api.themoviedb.org https://api.anthropic.com https://api.tvmaze.com https://api.qrserver.com",
+    "media-src 'self' https:",
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+  res.setHeader('Content-Security-Policy', csp);
+  next();
+});
+
+// ===== Rate limiting =====
+// Zero-dep sliding window limiter. Fine for Vercel's serverless warm boundaries
+// (same instance handles multiple requests). Real protection against bursts comes
+// from Vercel's own DDoS shield; this is a second layer for sane per-IP quotas.
+const rateStore = new Map(); // ip + bucket -> { count, resetAt }
+function rateLimit({ max, windowMs, bucket = 'default', message = 'Too many requests' }) {
+  return (req, res, next) => {
+    const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim() || 'unknown';
+    const key = `${bucket}:${ip}`;
+    const now = Date.now();
+    const rec = rateStore.get(key);
+    if (!rec || rec.resetAt < now) {
+      rateStore.set(key, { count: 1, resetAt: now + windowMs });
+    } else {
+      rec.count++;
+      if (rec.count > max) {
+        const retry = Math.ceil((rec.resetAt - now) / 1000);
+        res.setHeader('Retry-After', retry);
+        return res.status(429).json({ error: message, retry_after: retry });
+      }
+    }
+    next();
+  };
+}
+// Periodic cleanup so the map doesn't grow unbounded
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of rateStore) if (v.resetAt < now) rateStore.delete(k);
+}, 60_000).unref?.();
+
+// Global limiter — 100 req / min / IP
+app.use('/api/', rateLimit({ max: 100, windowMs: 60_000, bucket: 'global' }));
+// AI limiter — 10 req / min / IP (applied to the AI-heavy routes further down)
+const aiLimiter = rateLimit({ max: 10, windowMs: 60_000, bucket: 'ai', message: 'AI rate limit exceeded — please wait a minute.' });
+
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ===== Input sanitisation helpers =====
+// Cap strings to avoid log-injection / memory abuse; strip obvious HTML.
+function sanitizeString(s, max = 500) {
+  if (typeof s !== 'string') return '';
+  return s.slice(0, max).replace(/[<>]/g, '');
+}
+function sanitizeBody(obj, maxFieldLen = 3000) {
+  if (!obj || typeof obj !== 'object') return obj;
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (typeof v === 'string') obj[k] = v.length > maxFieldLen ? v.slice(0, maxFieldLen) : v;
+  }
+  return obj;
+}
+app.use((req, res, next) => { if (req.body) sanitizeBody(req.body); next(); });
+
+// ===== Health check (for monitoring, uptime probes, Vercel status dashboard) =====
+app.get('/api/health', (req, res) => {
+  res.json({
+    ok: true,
+    uptime_s: Math.round(process.uptime()),
+    now: new Date().toISOString(),
+    tmdb: !!TMDB_API_KEY,
+    claude: !!CLAUDE_API_KEY,
+    supabase: !!SUPABASE_URL,
+    node: process.version,
+  });
+});
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || '';
@@ -251,7 +349,7 @@ async function enrichWithTMDB(rec, lang) {
 }
 
 // ===== Seret AI: recommendations with mood, viewing context, persona =====
-app.post('/api/recommend', async (req, res) => {
+app.post('/api/recommend', aiLimiter, async (req, res) => {
   const {
     library = [], watchlist = [], skipped = [], calibration = [],
     lang = 'en', viewingContext = 'solo', mood = null, surprise = false,
@@ -329,7 +427,7 @@ ${baseJSON}`;
 });
 
 // ===== AI rating prediction =====
-app.post('/api/predict-rating', async (req, res) => {
+app.post('/api/predict-rating', aiLimiter, async (req, res) => {
   const { title, year, type, library = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const summary = library.slice(0, 25).map(i => `${i.title} (${i.year}) — ${i.userRating}/10`).join('\n');
@@ -344,7 +442,7 @@ app.post('/api/predict-rating', async (req, res) => {
 });
 
 // ===== AI rating explanation after rating =====
-app.post('/api/explain-rating', async (req, res) => {
+app.post('/api/explain-rating', aiLimiter, async (req, res) => {
   const { title, year, rating, library = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const summary = library.slice(0, 20).map(i => `${i.title} (${i.year}) — ${i.userRating}/10`).join(', ');
@@ -358,7 +456,7 @@ app.post('/api/explain-rating', async (req, res) => {
 });
 
 // ===== Semantic natural-language search =====
-app.post('/api/semantic-search', async (req, res) => {
+app.post('/api/semantic-search', aiLimiter, async (req, res) => {
   const { query, lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const noAdult = lang === 'fr'
@@ -409,7 +507,7 @@ app.get('/api/person-search', async (req, res) => {
 });
 
 // ===== "Tonight we watch" wizard =====
-app.post('/api/tonight', async (req, res) => {
+app.post('/api/tonight', aiLimiter, async (req, res) => {
   const { viewingContext = 'solo', mood = null, timeBudget = null, library = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const watchedSummary = library.slice(0, 30).map(i => `${i.title} (${i.year}) ${i.userRating || ''}`).join(', ');
@@ -441,7 +539,7 @@ app.post('/api/tonight', async (req, res) => {
 });
 
 // ===== Chat with Seret AI =====
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', aiLimiter, async (req, res) => {
   const { message, history = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const system = lang === 'fr'
@@ -523,7 +621,7 @@ app.get('/api/seasonal', (req, res) => {
 });
 
 // ===== Taste evolution =====
-app.post('/api/taste-evolution', async (req, res) => {
+app.post('/api/taste-evolution', aiLimiter, async (req, res) => {
   const { library = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   if (library.length < 10) return res.json({ text: null });
@@ -545,7 +643,7 @@ app.post('/api/taste-evolution', async (req, res) => {
 });
 
 // ===== Debate with AI =====
-app.post('/api/debate', async (req, res) => {
+app.post('/api/debate', aiLimiter, async (req, res) => {
   const { title, opinion, lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const prompt = lang === 'fr'
@@ -558,7 +656,7 @@ app.post('/api/debate', async (req, res) => {
 });
 
 // ===== Cultural context =====
-app.post('/api/context', async (req, res) => {
+app.post('/api/context', aiLimiter, async (req, res) => {
   const { title, year, lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const prompt = lang === 'fr'
@@ -569,7 +667,7 @@ app.post('/api/context', async (req, res) => {
 });
 
 // ===== Photo recognition =====
-app.post('/api/recognize', async (req, res) => {
+app.post('/api/recognize', aiLimiter, async (req, res) => {
   const { imageBase64, lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   if (!imageBase64) return res.status(400).json({ error: 'No image' });
@@ -607,7 +705,7 @@ app.post('/api/recognize', async (req, res) => {
 });
 
 // ===== Group recommendation =====
-app.post('/api/group-recommend', async (req, res) => {
+app.post('/api/group-recommend', aiLimiter, async (req, res) => {
   const { libraries = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   if (libraries.length < 2) return res.json({ error: 'Need at least 2 people' });
@@ -649,7 +747,7 @@ app.post('/api/wrapped', async (req, res) => {
 });
 
 // ===== Educational recommendations =====
-app.post('/api/learn', async (req, res) => {
+app.post('/api/learn', aiLimiter, async (req, res) => {
   const { category, level = 'any', ageRange = null, query = '', lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   const catMap = {
@@ -675,7 +773,7 @@ app.post('/api/learn', async (req, res) => {
 });
 
 // ===== Taste affinity analysis =====
-app.post('/api/affinity', async (req, res) => {
+app.post('/api/affinity', aiLimiter, async (req, res) => {
   const { library = [], lang = 'en' } = req.body;
   if (!CLAUDE_API_KEY) return res.status(500).json({ error: 'Seret AI not configured' });
   if (library.length < 5) return res.json({ text: null });
@@ -690,7 +788,7 @@ app.post('/api/affinity', async (req, res) => {
 });
 
 // ===== Seret for Schools (classrooms, assignments, answers) — minimal MVP =====
-app.post('/api/class/create', async (req, res) => {
+app.post('/api/class/create', aiLimiter, async (req, res) => {
   // Class creation/join is handled client-side via Supabase RLS; this endpoint
   // exists only to suggest 5 age-appropriate educational films for a topic.
   const { topic, ageRange = '11-14', lang = 'en' } = req.body;
