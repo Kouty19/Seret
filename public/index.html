@@ -22,6 +22,8 @@
 
   <!-- Onboarding Overlay -->
   <div class="onboarding" id="onboarding">
+    <!-- Escape hatch — always visible so users can't get stuck -->
+    <button class="onboarding-close" onclick="closeOnboarding()" aria-label="Close">&times;</button>
     <div class="onboarding-inner" id="onboardingInner"></div>
   </div>
 
@@ -455,6 +457,6 @@
     <div>This product uses the TMDB API but is not endorsed or certified by TMDB.</div>
   </footer>
 
-  <script src="app.js?v=28"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>

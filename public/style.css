@@ -1912,6 +1912,98 @@ main { padding-top: 68px; }
   input, select, textarea { font-size: 16px !important; }
 }
 
+/* ===== Universal horizontal scroller polish ===== */
+/* Applies to every strip that uses overflow-x:auto. Adds iOS momentum,
+   scroll-snap for clean landings, and a gold-tinted right-edge fade to
+   hint "there's more →" when content overflows. */
+.carousel,
+.cast-grid,
+.category-tabs,
+.library-filters,
+.stories-strip,
+.hero-actions,
+.modal-actions,
+.grid-h,
+.chat-picks {
+  -webkit-overflow-scrolling: touch; /* older iOS momentum */
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;               /* lock horizontal gesture */
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  scrollbar-gutter: stable;
+}
+.carousel > *,
+.cast-grid > *,
+.stories-strip > * { scroll-snap-align: start; }
+
+/* Right-edge fade — tells the user visually there is more to scroll. */
+.scroll-fade {
+  position: relative;
+}
+.scroll-fade::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  width: 48px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, rgba(0,0,0,0.6) 70%, var(--bg) 100%);
+  border-radius: 0 inherit inherit 0;
+}
+/* When the container is scrolled to the end, JS removes the fade (handled in app.js) */
+.scroll-fade.at-end::after { opacity: 0; }
+.scroll-fade::before {
+  /* little right arrow chevron that pulses when scrollable */
+  content: '›';
+  position: absolute;
+  top: 50%; right: 14px;
+  transform: translateY(-50%);
+  color: var(--gold); font-weight: 800; font-size: 24px;
+  opacity: 0.6;
+  animation: scrollHint 1.8s ease-in-out infinite;
+  pointer-events: none;
+  text-shadow: 0 0 10px rgba(232,185,106,0.5);
+  z-index: 1;
+}
+.scroll-fade.at-end::before { display: none; }
+@keyframes scrollHint {
+  0%, 100% { transform: translate(0, -50%); opacity: 0.5; }
+  50%      { transform: translate(4px, -50%); opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-fade::before { animation: none; }
+}
+
+/* Make sure grids on mobile that look cut off can scroll horizontally as a row */
+@media (max-width: 480px) {
+  /* On very narrow screens the 2-column grid can feel tight — keep it 2 columns
+     but ensure the trending strip next to "Tendances" title has enough room */
+  .section { padding: 32px 16px !important; }
+}
+
+/* Onboarding escape hatch — always-visible close button */
+.onboarding-close {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top));
+  right: 20px;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(20,20,20,0.55);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.onboarding-close:hover, .onboarding-close:active {
+  background: rgba(40,40,40,0.7);
+  transform: scale(0.95);
+}
+
 /* ===== Design polish v2 — glassmorphism + glows + scroll reveal ===== */
 
 /* Scroll reveal — JS adds .in-view when the element enters the viewport */

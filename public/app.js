@@ -977,7 +977,8 @@ function openProfilePicker() {
         </div>` : ''}
     </div>
     <div class="picker-actions">
-      ${activeProfile ? `<button class="btn btn-glass btn-sm" onclick="closeOnboarding()">${t('back')}</button>` : ''}
+      <!-- Always allow escaping the picker so users never feel trapped -->
+      <button class="btn btn-glass btn-sm" onclick="closeOnboarding()">${t('back')}</button>
       <button class="btn btn-outline btn-sm" onclick="toggleLang()">${langOther}</button>
       <button class="btn btn-outline btn-sm" onclick="showStatsMenu();closeOnboarding()">🏆 ${t('your_stats')}</button>
       <button class="btn btn-outline btn-sm" onclick="openSettings()">⚙ ${t('settings_title')}</button>
@@ -2624,8 +2625,88 @@ async function loadTasteEvolution() {
 
 // ===== Keyboard =====
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeModal(); closeAuthModal(); closeContextModal(); closeBadgesModal(); closeCameraModal(); closeRecoModal(); closeShareModal(); }
+  if (e.key === 'Escape') {
+    closeModal(); closeAuthModal(); closeContextModal(); closeBadgesModal();
+    closeCameraModal(); closeRecoModal(); closeShareModal();
+    closeTonightWizard(); closeSettingsModal(); closeHideReason();
+    closeStoryViewer();
+    // Only close onboarding on Esc if user already has an active profile
+    // (otherwise signup/profile creation needs at least a chosen action)
+    if (activeProfile || !currentUser) closeOnboarding();
+  }
 });
+
+// ===== History-aware navigation — mobile browser back button closes modals =====
+// Every time we open a modal, push a history entry. The back button (swipe-back
+// on iOS, hardware back on Android) pops the entry and triggers the close.
+(function setupHistoryBackForModals() {
+  const closers = {
+    detail:    () => document.getElementById('detailModal')?.classList.remove('active'),
+    auth:      () => document.getElementById('authModal')?.classList.remove('active'),
+    context:   () => document.getElementById('contextModal')?.classList.remove('active'),
+    badges:    () => document.getElementById('badgesModal')?.classList.remove('active'),
+    camera:    () => document.getElementById('cameraModal')?.classList.remove('active'),
+    reco:      () => document.getElementById('recoModal')?.classList.remove('active'),
+    share:     () => document.getElementById('shareModal')?.classList.remove('active'),
+    tonight:   () => document.getElementById('tonightModal')?.classList.remove('active'),
+    settings:  () => document.getElementById('settingsModal')?.classList.remove('active'),
+    onboarding:() => document.getElementById('onboarding')?.classList.remove('active'),
+    story:     () => document.getElementById('storyViewer')?.classList.remove('active'),
+    hideR:     () => { const m = document.getElementById('hideReasonModal'); if (m) m.style.display = 'none'; },
+  };
+  // Observe modal state flips and push a history entry on open
+  function watch(id, tag, detect) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let wasOpen = detect(el);
+    new MutationObserver(() => {
+      const now = detect(el);
+      if (now && !wasOpen) {
+        // Modal just opened — push a state so back button can close it
+        try { history.pushState({ seretModal: tag }, ''); } catch {}
+      }
+      wasOpen = now;
+    }).observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+  window.addEventListener('load', () => {
+    const byClass = el => el?.classList.contains('active');
+    const byDisplay = el => el && getComputedStyle(el).display !== 'none';
+    watch('detailModal',   'detail',    byClass);
+    watch('authModal',     'auth',      byClass);
+    watch('contextModal',  'context',   byClass);
+    watch('badgesModal',   'badges',    byClass);
+    watch('cameraModal',   'camera',    byClass);
+    watch('recoModal',     'reco',      byClass);
+    watch('shareModal',    'share',     byClass);
+    watch('tonightModal',  'tonight',   byClass);
+    watch('settingsModal', 'settings',  byClass);
+    watch('onboarding',    'onboarding',byClass);
+    watch('storyViewer',   'story',     byClass);
+    watch('hideReasonModal','hideR',    byDisplay);
+  });
+  // Back button closes the topmost open modal (priority order: detail modals first,
+  // then light overlays, then the profile picker/onboarding as the fallback).
+  window.addEventListener('popstate', () => {
+    // Ordered from most-foreground to most-background. First match wins.
+    const priority = [
+      ['hideReasonModal', () => document.getElementById('hideReasonModal')?.style.display === 'flex', closers.hideR],
+      ['storyViewer',     () => document.querySelector('#storyViewer.active'),                         closers.story],
+      ['shareModal',      () => document.querySelector('#shareModal.active'),                          closers.share],
+      ['recoModal',       () => document.querySelector('#recoModal.active'),                           closers.reco],
+      ['contextModal',    () => document.querySelector('#contextModal.active'),                        closers.context],
+      ['cameraModal',     () => document.querySelector('#cameraModal.active'),                         closers.camera],
+      ['tonightModal',    () => document.querySelector('#tonightModal.active'),                        closers.tonight],
+      ['settingsModal',   () => document.querySelector('#settingsModal.active'),                       closers.settings],
+      ['badgesModal',     () => document.querySelector('#badgesModal.active'),                         closers.badges],
+      ['detailModal',     () => document.querySelector('#detailModal.active'),                         closers.detail],
+      ['authModal',       () => document.querySelector('#authModal.active'),                           closers.auth],
+      ['onboarding',      () => document.querySelector('#onboarding.active'),                          closers.onboarding],
+    ];
+    for (const [, isOpen, close] of priority) {
+      if (isOpen()) { close(); return; }
+    }
+  });
+})();
 
 // ===== Toast =====
 function showToast(msg, duration = 2200) {
@@ -3611,6 +3692,44 @@ onAuthChange = async function () {
   await _prevAuthChange.apply(this, arguments);
   processPendingFriend().catch(() => {});
 };
+
+// ===== Scroll fade hint for horizontal scrollers =====
+// Wraps known horizontal scrollers with .scroll-fade (adds a right-edge gradient
+// + pulsing chevron) and toggles .at-end so the hint disappears when you're
+// already at the rightmost scroll position. Makes "there's more →" obvious.
+(function setupScrollFades() {
+  const SELECTOR = '.carousel, .cast-grid, .stories-strip';
+  function wrap(el) {
+    if (!el || el.dataset.scrollFaded) return;
+    // Skip if there's nothing to scroll
+    if (el.scrollWidth <= el.clientWidth + 4) return;
+    el.dataset.scrollFaded = '1';
+    // Wrap the scroller in a .scroll-fade container so the ::after fade
+    // sits over the element
+    const wrapper = document.createElement('div');
+    wrapper.className = 'scroll-fade';
+    // Inherit block-level layout by letting the wrapper fill the parent cell
+    wrapper.style.position = 'relative';
+    el.parentNode.insertBefore(wrapper, el);
+    wrapper.appendChild(el);
+    const update = () => {
+      const nearEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 8;
+      wrapper.classList.toggle('at-end', nearEnd);
+    };
+    el.addEventListener('scroll', update, { passive: true });
+    update();
+    // Re-check when the content changes (new items injected)
+    new ResizeObserver(update).observe(el);
+  }
+  function scan() {
+    document.querySelectorAll(SELECTOR).forEach(wrap);
+  }
+  // Run on load + whenever new content might appear
+  window.addEventListener('load', () => {
+    scan();
+    setInterval(scan, 1500);
+  });
+})();
 
 // ===== Scroll reveal =====
 // Tags sections + cards with .reveal, then animates them in as they enter
