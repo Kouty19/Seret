@@ -889,6 +889,16 @@ async function selectSubProfile(id) {
 // ===== Library =====
 function loadLocalLibrary() {
   library = JSON.parse(localStorage.getItem('seret-library') || '[]');
+  // If totally empty for a first-time visitor, seed a small demo library so they
+  // see how the product looks. Marked with .demo flag so we never sync to Supabase.
+  if (!currentUser && library.length === 0) {
+    library = [
+      { id: 155, type: 'movie', title: 'The Dark Knight', year: '2008', poster: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg', status: 'watched', userRating: 9, demo: true, addedAt: Date.now() - 3 * 86400000 },
+      { id: 27205, type: 'movie', title: 'Inception', year: '2010', poster: 'https://image.tmdb.org/t/p/w500/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg', status: 'watched', userRating: 10, demo: true, addedAt: Date.now() - 10 * 86400000 },
+      { id: 496243, type: 'movie', title: 'Parasite', year: '2019', poster: 'https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg', status: 'watched', userRating: 9, demo: true, addedAt: Date.now() - 20 * 86400000 },
+      { id: 1396, type: 'tv', title: 'Breaking Bad', year: '2008', poster: 'https://image.tmdb.org/t/p/w500/ggFHVNu6YYI5L9pCfOacjizRGt.jpg', status: 'watched', userRating: 10, demo: true, addedAt: Date.now() - 40 * 86400000 },
+    ];
+  }
   renderLibrary();
 }
 async function loadLibraryForProfile() {
@@ -1031,6 +1041,18 @@ function renderLibrary() {
   if (currentLibSection === 'to_watch') items.sort((a, b) => (b.priority || 0) - (a.priority || 0) || b.addedAt - a.addedAt);
   const grid = document.getElementById('libraryGrid');
   const empty = document.getElementById('emptyLibrary');
+  // Teaser banner for unauthenticated users browsing demo library
+  const header = document.querySelector('#libraryView .library-header');
+  const existingTeaser = document.getElementById('libTeaser');
+  if (!currentUser && items.some(i => i.demo)) {
+    if (!existingTeaser && header) {
+      const banner = document.createElement('div');
+      banner.id = 'libTeaser';
+      banner.className = 'teaser-banner';
+      banner.innerHTML = `<span style="flex:1">${currentLang === 'fr' ? '🎬 Ceci est une bibliotheque de demo. Cree ton compte pour sauvegarder la tienne.' : '🎬 This is a demo library. Create your account to save yours.'}</span><button class="btn btn-sm btn-gold" onclick="openAuthModal()">${t('sign_in')}</button>`;
+      header.after(banner);
+    }
+  } else if (existingTeaser) existingTeaser.remove();
   if (items.length === 0) { grid.innerHTML = ''; empty.style.display = 'flex'; }
   else { empty.style.display = 'none'; grid.innerHTML = items.map(r => cardHTML(r, true)).join(''); }
 }
@@ -1393,6 +1415,11 @@ async function openDetail(type, id) {
             <textarea id="journalText" placeholder="${t('journal_ph')}">${esc(existing.comment || '')}</textarea>
             <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="saveJournal(${d.id}, '${type}')">${t('save')}</button>
           </div>
+        ` : !currentUser ? `
+          <div class="teaser-banner" style="margin-top:20px">
+            <span style="flex:1">${currentLang === 'fr' ? '🔒 Note ce film, ecris ton journal prive, recommande-le a tes amis.' : '🔒 Rate this film, write a private journal, share with friends.'}</span>
+            <button class="btn btn-sm btn-gold" onclick="openAuthModal()">${t('sign_in')}</button>
+          </div>
         ` : ''}
         <div class="debate-box">
           <div class="ai-section-label">${t('debate_title')}</div>
@@ -1629,6 +1656,11 @@ function selectViewingContext(ctx, btn) {
 async function getRecommendations(surprise = false) {
   const content = document.getElementById('recsContent');
   content.innerHTML = `<div class="recs-loading"><div class="spinner"></div> ${t('loading_recs')}</div>`;
+  // Teaser for non-authed users: show blurred results with a sign-in overlay.
+  if (!currentUser) {
+    await runDemoRecommendations(content);
+    return;
+  }
   const watched = library.filter(i => (i.status || 'watched') === 'watched');
   const watchlist = library.filter(i => i.status === 'to_watch');
   const skippedKeys = getNotInterested();
@@ -1649,6 +1681,78 @@ async function getRecommendations(surprise = false) {
 }
 
 function surpriseMe() { getRecommendations(true); }
+
+// ===== Teaser: demo recommendations for non-authed users =====
+async function runDemoRecommendations(content) {
+  // Use a small fixed set of popular, high-quality films so the blurred demo looks real
+  const demoPicks = currentLang === 'fr' ? [
+    { title: 'Parasite', year: '2019', type: 'movie', reason: 'Un regard affute sur les classes sociales.' },
+    { title: 'The Dark Knight', year: '2008', type: 'movie', reason: 'Le sommet du thriller moderne.' },
+    { title: 'Breaking Bad', year: '2008', type: 'tv', reason: 'La serie qui a redefini le genre.' },
+    { title: 'La La Land', year: '2016', type: 'movie', reason: 'Une romance feel-good sublime.' },
+    { title: 'Interstellar', year: '2014', type: 'movie', reason: 'Science-fiction emotionnelle.' },
+  ] : [
+    { title: 'Parasite', year: '2019', type: 'movie', reason: 'A razor-sharp take on class.' },
+    { title: 'The Dark Knight', year: '2008', type: 'movie', reason: 'Peak modern thriller.' },
+    { title: 'Breaking Bad', year: '2008', type: 'tv', reason: 'The show that redefined TV.' },
+    { title: 'La La Land', year: '2016', type: 'movie', reason: 'A sublime feel-good romance.' },
+    { title: 'Interstellar', year: '2014', type: 'movie', reason: 'Emotional sci-fi.' },
+  ];
+  // Enrich via semantic-search style API (so we get posters) — fallback to placeholders
+  let recs = demoPicks;
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(demoPicks.map(p => p.title).join(' '))}`);
+    const data = await res.json();
+    // Match each pick with TMDB result by title similarity
+    recs = demoPicks.map(p => {
+      const m = (data.results || []).find(r => (r.title || '').toLowerCase().includes(p.title.toLowerCase().slice(0, 10)));
+      return m ? { ...p, tmdb_id: m.id, poster: m.poster, backdrop: m.backdrop, rating: m.rating } : p;
+    });
+  } catch {}
+  content.innerHTML = `
+    <div class="gated-wrap" style="margin-top:20px">
+      <div class="gated-blur">
+        <div class="ai-profile">
+          <div class="ai-section-label">${t('your_profile')}</div>
+          <div class="ai-profile-text">${currentLang === 'fr'
+            ? 'D\'apres ta bibliotheque, tu es un cinephile exigeant attire par les recits denses, les personnages complexes et la grande maniere.'
+            : 'Based on your library, you are a demanding cinephile drawn to dense narratives, complex characters and grand filmmaking.'}</div>
+          <div class="ai-persona">✨ The Analyst</div>
+        </div>
+        <div class="ai-recs-grid">${recs.map(r => aiRecCard(r)).join('')}</div>
+      </div>
+      <div class="gated-overlay" onclick="openAuthModal()">
+        <div class="gated-overlay-icon">🎬</div>
+        <div class="gated-overlay-title">${currentLang === 'fr' ? 'Tes recos sont pretes !' : 'Your picks are ready!'}</div>
+        <div class="gated-overlay-sub">${currentLang === 'fr' ? 'Connecte-toi pour decouvrir les recommandations personnalisees de Seret AI.' : 'Sign in to unlock Seret AI personalised recommendations.'}</div>
+        <button class="btn btn-gold btn-lg" onclick="event.stopPropagation();openAuthModal()">${t('sign_in')}</button>
+      </div>
+    </div>`;
+}
+
+// ===== Teaser: demo wrapped for non-authed users =====
+function renderDemoWrapped() {
+  const canvasHTML = `<canvas id="wrappedCanvas" width="1080" height="1920" style="width:100%;max-width:380px;display:block;margin:20px auto;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)"></canvas>`;
+  document.getElementById('wrappedYear').textContent = new Date().getFullYear();
+  document.getElementById('wrappedContent').innerHTML = `
+    <div class="teaser-banner">
+      <span style="flex:1">${currentLang === 'fr' ? '✨ Voici a quoi ressemblerait ton Wrapped.' : '✨ Here\'s what your Wrapped could look like.'}</span>
+      <button class="btn btn-sm btn-gold" onclick="openAuthModal()">${t('sign_in')}</button>
+    </div>
+    ${canvasHTML}
+    <div class="wrapped-grid">
+      <div class="wrapped-card gradient-1"><div class="wrapped-value">47</div><div class="wrapped-label">${t('total_watched')}</div></div>
+      <div class="wrapped-card gradient-2"><div class="wrapped-value">35</div><div class="wrapped-label">${t('movies_count')}</div></div>
+      <div class="wrapped-card gradient-3"><div class="wrapped-value">12</div><div class="wrapped-label">${t('series_count')}</div></div>
+      <div class="wrapped-card gradient-4"><div class="wrapped-value">8</div><div class="wrapped-label">${t('five_stars')}</div></div>
+      <div class="wrapped-card gradient-5"><div class="wrapped-value">7.8</div><div class="wrapped-label">${t('avg_rating')}</div></div>
+    </div>`;
+  renderWrappedCanvas({
+    year: new Date().getFullYear(),
+    total: 47, movies: 35, shows: 12, fiveStars: 8, avgRating: '7.8',
+    favTitle: 'Gladiator', persona: 'The Analyst',
+  });
+}
 
 function renderRecommendations(data) {
   if (data.persona) window._seretPersona = data.persona; // persisted for Wrapped canvas
@@ -2182,6 +2286,8 @@ async function acceptReco(recoId, tmdbId, type, title) {
 
 // ===== Wrapped =====
 async function loadWrapped() {
+  // Teaser for non-authed users: show a fictional Wrapped preview
+  if (!currentUser) { renderDemoWrapped(); return; }
   const year = new Date().getFullYear();
   const res = await fetch('/api/wrapped', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2571,6 +2677,16 @@ async function sendChat() {
   const input = document.getElementById('chatInput');
   const msg = input.value.trim();
   if (!msg) return;
+  // Teaser: allow a single free question to non-authed users, then gate
+  const guestCount = chatHistory.filter(m => m.role === 'user').length;
+  if (!currentUser && guestCount >= 1) {
+    renderChatMessage('ai', currentLang === 'fr'
+      ? 'Pour continuer a discuter avec moi et obtenir des recommandations personnalisees, connecte-toi — c\'est gratuit 🎬'
+      : 'To keep chatting and get personalised picks, sign in — it\'s free 🎬');
+    setTimeout(() => openAuthModal(), 400);
+    input.value = '';
+    return;
+  }
   input.value = '';
   renderChatMessage('user', msg);
   chatHistory.push({ role: 'user', content: msg });
