@@ -3595,6 +3595,45 @@ onAuthChange = async function () {
   processPendingFriend().catch(() => {});
 };
 
+// ===== Scroll reveal =====
+// Tags sections + cards with .reveal, then animates them in as they enter
+// the viewport. Skips on older browsers or when prefers-reduced-motion is on.
+(function setupScrollReveal() {
+  if (!('IntersectionObserver' in window)) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { e.target.classList.add('in-view'); io.unobserve(e.target); }
+    }
+  }, { rootMargin: '0px 0px -60px 0px', threshold: 0.08 });
+
+  function tagAndObserve(selector) {
+    document.querySelectorAll(selector).forEach(el => {
+      if (el.classList.contains('reveal')) return;
+      el.classList.add('reveal');
+      io.observe(el);
+    });
+  }
+
+  function scanOnce() {
+    tagAndObserve('#homeView .section > h2.section-title');
+    tagAndObserve('.seasonal-banner');
+    tagAndObserve('.seret-memory-greeting');
+    tagAndObserve('#challengeSlot > *');
+    tagAndObserve('#tvTonightSlot > *');
+    tagAndObserve('#worldCinemaSlot > *');
+    tagAndObserve('#storiesStrip > *');
+    tagAndObserve('#activityFeedWrap > *');
+    tagAndObserve('.semantic-search-wrap');
+  }
+  // Initial + re-scan whenever the home content is re-rendered
+  const scan = () => { try { scanOnce(); } catch {} };
+  scan();
+  // Re-scan every 1.5s for newly-injected content (cheap; IntersectionObserver is idempotent after unobserve)
+  setInterval(scan, 1500);
+})();
+
 // ===== Init =====
 applyLang();
 capturePendingAddFromURL();
