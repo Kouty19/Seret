@@ -626,6 +626,7 @@ async function submitAuth() {
   const password = document.getElementById('authPassword').value;
   const errorEl = document.getElementById('authError');
   errorEl.textContent = '';
+  errorEl.style.color = ''; // reset from any prior "check your email" success styling
   if (!email || !password) return (errorEl.textContent = t('fill_fields'));
   if (password.length < 6) return (errorEl.textContent = t('password_min'));
   const btn = document.getElementById('authSubmitBtn');
