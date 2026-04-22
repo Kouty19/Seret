@@ -643,6 +643,22 @@ async function submitAuth() {
     : await sb.auth.signInWithPassword({ email, password });
   btn.disabled = false;
   if (result.error) { errorEl.textContent = result.error.message; return; }
+  // If signup returned a user but no session, email confirmation is required.
+  // Keep the modal open and show a clear "check your inbox" message instead of
+  // pretending the user is signed in.
+  const pendingEmailConfirm = authMode === 'signup'
+    && result.data?.user
+    && !result.data?.session;
+  if (pendingEmailConfirm) {
+    const msg = currentLang === 'fr'
+      ? `📬 On t'a envoyé un email à ${email}. Clique sur le lien pour activer ton compte (pense à vérifier ton spam).`
+      : `📬 We've sent an email to ${email}. Click the link to activate your account (check your spam folder).`;
+    errorEl.style.color = 'var(--gold)';
+    errorEl.textContent = msg;
+    document.getElementById('authPassword').value = '';
+    return;
+  }
+  errorEl.style.color = ''; // reset
   closeAuthModal();
   document.getElementById('authEmail').value = '';
   document.getElementById('authPassword').value = '';
