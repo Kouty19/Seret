@@ -985,7 +985,18 @@ function editSubProfile(id) {
 }
 
 async function selectSubProfile(id) {
-  activeProfile = userProfiles.find(p => p.id === id);
+  const target = userProfiles.find(p => p.id === id);
+  if (!target) return;
+  // Parental PIN — require when *leaving* a kid profile (or entering if PIN is set on non-kid)
+  const savedPin = localStorage.getItem('seret-parental-pin');
+  if (savedPin && activeProfile?.kind === 'kid' && target.kind !== 'kid') {
+    const entered = prompt(currentLang === 'fr' ? 'Code parental requis pour sortir du profil enfant :' : 'Parental PIN required to leave kid profile:');
+    if (entered !== savedPin) {
+      showToast(currentLang === 'fr' ? 'Code incorrect' : 'Wrong PIN');
+      return;
+    }
+  }
+  activeProfile = target;
   if (!activeProfile) return;
   // Cancel any pending sync that could write with the previous profile
   clearTimeout(syncDebounce);
@@ -1242,12 +1253,29 @@ async function loadTrending() {
     document.getElementById('trendingGrid').innerHTML = items.map(r => trendingCardHTML(r)).filter(Boolean).join('');
   } catch (e) { console.error(e); }
 }
+// Child-safety filter — when active profile is 'kid', hide content that is
+// flagged adult or has genres incompatible with kids (horror, erotic, war).
+const KID_BLOCKED_GENRES = [27 /* horror */, 10749 /* romance, often adult */, 10768 /* war & politics */, 80 /* crime */];
+function isKidProfileActive() {
+  return activeProfile?.kind === 'kid' || localStorage.getItem('seret-kid-lock') === '1';
+}
+function isKidSafe(r) {
+  if (!isKidProfileActive()) return true;
+  // Without TMDB certification data we fall back to keyword / genre inference.
+  const title = (r.title || '').toLowerCase();
+  const overview = (r.overview || '').toLowerCase();
+  const bad = ['murder', 'kill', 'violence', 'sex', 'drug', 'war', 'horror'];
+  if (bad.some(w => title.includes(w) || overview.includes(w))) return false;
+  if ((r.genre_ids || []).some(g => KID_BLOCKED_GENRES.includes(g))) return false;
+  return true;
+}
 function trendingCardHTML(r) {
   const key = `${r.id}_${r.type}`;
   const skipped = getNotInterested().includes(key);
   // Also check library_items flag
   const inLibSkipped = library.some(l => l.id === r.id && l.type === r.type && l.not_interested);
   if (skipped || inLibSkipped) return '';
+  if (!isKidSafe(r)) return '';
   return `
     <div class="card trending-card">
       <button class="card-hide-btn" onclick="event.stopPropagation();openHideReason(${r.id}, '${r.type}', this)" title="Hide">✕</button>
@@ -1515,7 +1543,7 @@ async function openDetail(type, id) {
           </div>
         </div>
         ${userRatingHTML}
-        ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<a href="${providerSearchUrl(p.provider_name, title)}" target="_blank" rel="noopener noreferrer" title="${esc(p.provider_name)}"><img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}"></a>`).join('')}</div>` : ''}
+        ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<a href="${providerSearchUrl(p.provider_name, title)}" target="_blank" rel="noopener noreferrer" title="${esc(p.provider_name)}" onclick="logAffiliateClick(${JSON.stringify(esc(p.provider_name))}, ${JSON.stringify(esc(title))})"><img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}"></a>`).join('')}</div>` : ''}
         ${overview ? `<div class="modal-overview">${esc(overview)}</div>` : ''}
         <div class="modal-actions">
           ${primaryActions}
@@ -2659,7 +2687,14 @@ async function processPendingAdd() {
 }
 
 
-// ===== Streaming provider deep links with utm_source=seret =====
+// ===== Streaming provider deep links with utm_source=seret + click tracking =====
+function logAffiliateClick(providerName, title) {
+  if (!sb || !currentUser) return;
+  sb.from('user_events').insert({
+    user_id: currentUser.id, event_type: 'affiliate_click',
+    metadata: { provider: providerName, title },
+  }).then(() => {}).catch(() => {});
+}
 function providerSearchUrl(providerName, title) {
   const q = encodeURIComponent(title);
   const utm = 'utm_source=seret&utm_medium=app&utm_campaign=streaming';
@@ -3093,9 +3128,27 @@ function renderSettings() {
         <span>${t('tsniout_toggle')}</span>
       </label>
       <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:8px">
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-glass btn-sm" style="flex:1" onclick="setParentalPin()">🔒 ${currentLang === 'fr' ? 'Code parental' : 'Parental PIN'}</button>
+          <button class="btn btn-glass btn-sm" style="flex:1" onclick="enablePushNotifications()">🔔 ${t('push_enable')}</button>
+        </div>
         <button class="btn btn-danger" style="width:100%" onclick="deleteAccount()">${t('delete_account')}</button>
       </div>
     </div>`;
+}
+function setParentalPin() {
+  const current = localStorage.getItem('seret-parental-pin');
+  if (current) {
+    const entered = prompt(currentLang === 'fr' ? 'Code actuel pour desactiver :' : 'Current PIN to disable:');
+    if (entered !== current) { showToast(currentLang === 'fr' ? 'Code incorrect' : 'Wrong PIN'); return; }
+    localStorage.removeItem('seret-parental-pin');
+    showToast(currentLang === 'fr' ? 'Code parental desactive' : 'Parental PIN disabled');
+    return;
+  }
+  const pin = prompt(currentLang === 'fr' ? 'Choisis un code a 4 chiffres :' : 'Choose a 4-digit PIN:');
+  if (!pin || !/^\d{4}$/.test(pin)) { showToast(currentLang === 'fr' ? 'PIN doit etre 4 chiffres' : 'PIN must be 4 digits'); return; }
+  localStorage.setItem('seret-parental-pin', pin);
+  showToast(currentLang === 'fr' ? 'Code parental active' : 'Parental PIN set');
 }
 function setCulture(c) { localStorage.setItem('seret-culture', c); renderSettings(); loadSeasonalBanner(); }
 function toggleSetting(key, value) {
