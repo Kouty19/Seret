@@ -66,13 +66,25 @@ app.get('/api/tmdb-debug', async (req, res) => {
   }
 });
 
+// NSFW keyword list — multilingual. Used as a belt-and-suspenders filter
+// on top of TMDB's `adult=false`. Edge-cases guarded (e.g. "young adult").
+const BLOCKED_NSFW = [
+  // EN
+  'xxx', 'porn', 'porno', 'hardcore', 'erotic', 'erotica', 'sexploitation',
+  'softcore', 'nude', 'nudity', 'nudist', 'fetish', 'bdsm', 'hentai',
+  'incest', 'orgy', 'threesome', 'striptease',
+  // FR
+  'pornographique', 'erotique', 'erotisme', 'nudisme',
+  // ES / IT / PT
+  'pornografico', 'erotica', 'sexo explicito',
+  // DE
+  'pornografie', 'erotisch',
+];
 function isAppropriate(r) {
   if (r.adult === true) return false;
-  // Block NSFW genres: Adult (film) = no explicit genre id, but many adult content
-  // has genre_ids = [10749, 18] + adult=true. We also filter by keywords.
-  const blockedKeywords = ['xxx', 'porn', 'porno', 'adult', 'erotic', 'nude', 'nudity'];
   const text = ((r.title || r.name || '') + ' ' + (r.overview || '')).toLowerCase();
-  if (blockedKeywords.some(k => text.includes(k))) return false;
+  // Avoid false positive: "young adult" / "adult animation" should pass
+  if (BLOCKED_NSFW.some(k => text.includes(k))) return false;
   return true;
 }
 
@@ -107,13 +119,13 @@ app.get('/api/trending', async (req, res) => {
   try {
     let raw = [];
     if (category === 'all') {
-      const data = await tmdbFetch('/trending/all/week', { language: lang });
+      const data = await tmdbFetch('/trending/all/week', { language: lang, include_adult: 'false' });
       raw = (data.results || []).filter(r => r.media_type === 'movie' || r.media_type === 'tv');
     } else if (category === 'movie') {
-      const data = await tmdbFetch('/trending/movie/week', { language: lang });
+      const data = await tmdbFetch('/trending/movie/week', { language: lang, include_adult: 'false' });
       raw = (data.results || []).map(r => ({ ...r, media_type: 'movie' }));
     } else if (category === 'tv') {
-      const data = await tmdbFetch('/trending/tv/week', { language: lang });
+      const data = await tmdbFetch('/trending/tv/week', { language: lang, include_adult: 'false' });
       raw = (data.results || []).map(r => ({ ...r, media_type: 'tv' }));
     } else if (category === 'documentary') {
       const data = await tmdbFetch('/discover/movie', { language: lang, with_genres: '99', sort_by: 'popularity.desc', include_adult: 'false' });
@@ -206,7 +218,7 @@ function parseJSON(text) {
 
 async function enrichWithTMDB(rec, lang) {
   try {
-    const search = await tmdbFetch('/search/multi', { query: rec.title, language: lang === 'fr' ? 'fr-FR' : 'en-US' });
+    const search = await tmdbFetch('/search/multi', { query: rec.title, language: lang === 'fr' ? 'fr-FR' : 'en-US', include_adult: 'false' });
     const match = (search.results || []).find(r =>
       (r.media_type === 'movie' || r.media_type === 'tv') &&
       ((r.release_date || r.first_air_date || '').startsWith(rec.year))
@@ -370,7 +382,7 @@ app.get('/api/person-search', async (req, res) => {
   if (!q) return res.json({ person: null });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
-    const search = await tmdbFetch('/search/person', { query: q, language: lang });
+    const search = await tmdbFetch('/search/person', { query: q, language: lang, include_adult: 'false' });
     const p = (search.results || [])[0];
     if (!p) return res.json({ person: null });
     const details = await tmdbFetch(`/person/${p.id}`, { language: lang, append_to_response: 'combined_credits' });
