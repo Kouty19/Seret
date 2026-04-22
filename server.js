@@ -93,6 +93,22 @@ function sanitizeBody(obj, maxFieldLen = 3000) {
 }
 app.use((req, res, next) => { if (req.body) sanitizeBody(req.body); next(); });
 
+// ===== Typed input validators (reject early with 400 on malformed input) =====
+class ValidationError extends Error { constructor(m) { super(m); this.status = 400; } }
+const MEDIA_TYPE_ENUM = new Set(['movie', 'tv']);
+const LANG_ENUM = new Set(['en', 'fr', 'es', 'de', 'pt', 'ru', 'he', 'ar']);
+const COUNTRY_RE = /^[A-Z]{2}$/;
+const ID_RE = /^\d{1,12}$/;
+function needString(v, field, maxLen = 500) {
+  if (typeof v !== 'string' || v.length === 0) throw new ValidationError(`${field} required`);
+  if (v.length > maxLen) throw new ValidationError(`${field} too long`);
+  return v;
+}
+function needEnum(v, set, field) {
+  if (!set.has(v)) throw new ValidationError(`${field} invalid`);
+  return v;
+}
+
 // ===== Health check (for monitoring, uptime probes, Vercel status dashboard) =====
 app.get('/api/health', (req, res) => {
   res.json({
@@ -202,6 +218,7 @@ function mapItem(r) {
 app.get('/api/search', async (req, res) => {
   const { q, lang = 'en-US' } = req.query;
   if (!q) return res.json({ results: [] });
+  if (typeof q !== 'string' || q.length > 200) return res.status(400).json({ error: 'query too long' });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   const data = await tmdbFetch('/search/multi', { query: q, language: lang, include_adult: 'false' });
   const results = (data.results || [])
@@ -260,6 +277,8 @@ app.get('/api/calibration-set', async (req, res) => {
 app.get('/api/details/:type/:id', async (req, res) => {
   const { type, id } = req.params;
   const { lang = 'en-US' } = req.query;
+  if (!MEDIA_TYPE_ENUM.has(type)) return res.status(400).json({ error: 'invalid type' });
+  if (!ID_RE.test(id)) return res.status(400).json({ error: 'invalid id' });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
     const data = await tmdbFetch(`/${type}/${id}`, {
@@ -478,6 +497,7 @@ app.post('/api/semantic-search', aiLimiter, async (req, res) => {
 app.get('/api/person-search', async (req, res) => {
   const { q, lang = 'en-US' } = req.query;
   if (!q) return res.json({ person: null });
+  if (typeof q !== 'string' || q.length > 200) return res.status(400).json({ error: 'query too long' });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
     const search = await tmdbFetch('/search/person', { query: q, language: lang, include_adult: 'false' });
@@ -848,7 +868,8 @@ const TV_CHANNELS_BY_COUNTRY = {
 };
 
 app.get('/api/tv-tonight', async (req, res) => {
-  const { country = 'FR' } = req.query;
+  const country = String(req.query.country || 'FR').toUpperCase();
+  if (!COUNTRY_RE.test(country)) return res.status(400).json({ error: 'invalid country' });
   const today = new Date().toISOString().slice(0, 10);
   try {
     const data = await httpGetJson(`https://api.tvmaze.com/schedule?country=${country}&date=${today}`);
@@ -890,7 +911,9 @@ app.get('/api/tv-tonight', async (req, res) => {
 
 // ===== World cinema — films from a given country =====
 app.get('/api/world-cinema', async (req, res) => {
-  const { country = 'FR', lang = 'en-US' } = req.query;
+  const country = String(req.query.country || 'FR').toUpperCase();
+  const { lang = 'en-US' } = req.query;
+  if (!COUNTRY_RE.test(country)) return res.status(400).json({ error: 'invalid country' });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
     const data = await tmdbFetch('/discover/movie', {
