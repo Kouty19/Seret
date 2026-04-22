@@ -1,0 +1,1 @@
+{{ if eq .Data.lang "fr" }}🎬 Bienvenue sur Seret !{{ else }}🎬 Welcome to Seret!{{ end }}

@@ -631,7 +631,15 @@ async function submitAuth() {
   const btn = document.getElementById('authSubmitBtn');
   btn.disabled = true;
   const result = authMode === 'signup'
-    ? await sb.auth.signUp({ email, password })
+    ? await sb.auth.signUp({
+        email, password,
+        options: {
+          // user_metadata — surfaced in Supabase email templates as {{ .Data.lang }}
+          // so the welcome/confirm email can render in the user's language.
+          data: { lang: currentLang },
+          emailRedirectTo: window.location.origin + window.location.pathname,
+        },
+      })
     : await sb.auth.signInWithPassword({ email, password });
   btn.disabled = false;
   if (result.error) { errorEl.textContent = result.error.message; return; }
