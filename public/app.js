@@ -3183,8 +3183,61 @@ async function loadChallenge() {
   } catch {}
 }
 
+// ===== Seret Memory — contextual personalised greeting =====
+function loadSeretMemoryGreeting() {
+  const slot = document.getElementById('seretMemorySlot');
+  if (!slot) return;
+  // Need a meaningful library to be useful
+  const watched = library.filter(l => (l.status || 'watched') === 'watched' && l.addedAt);
+  if (watched.length < 5 || !currentUser) { slot.innerHTML = ''; return; }
+  const now = new Date();
+  const nowDow = now.getDay(); // 0-6
+  const nowHour = now.getHours();
+  const dayNames = currentLang === 'fr'
+    ? ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+    : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  // Compute user's dominant day-of-week
+  const dowHist = new Array(7).fill(0);
+  const hourHist = new Array(24).fill(0);
+  const ctxHist = {};
+  for (const w of watched) {
+    const d = new Date(w.addedAt);
+    dowHist[d.getDay()]++;
+    hourHist[d.getHours()]++;
+    if (w.viewing_context) ctxHist[w.viewing_context] = (ctxHist[w.viewing_context] || 0) + 1;
+  }
+  const topDow = dowHist.indexOf(Math.max(...dowHist));
+  const topHour = hourHist.indexOf(Math.max(...hourHist));
+  const topCtx = Object.entries(ctxHist).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const name = userProfile?.display_name || activeProfile?.name || '';
+  const hourGreeting = nowHour < 6 ? (currentLang === 'fr' ? 'Bonne nuit' : 'Good night')
+    : nowHour < 12 ? (currentLang === 'fr' ? 'Bonjour' : 'Good morning')
+    : nowHour < 18 ? (currentLang === 'fr' ? 'Bonjour' : 'Good afternoon')
+    : (currentLang === 'fr' ? 'Bonsoir' : 'Good evening');
+  const moonOrSun = nowHour >= 18 || nowHour < 6 ? '🌙' : '☀️';
+  // Insight line — only shown if the current day matches their dominant one
+  let insight = '';
+  if (nowDow === topDow) {
+    insight = currentLang === 'fr'
+      ? `D'apres tes habitudes, le ${dayNames[topDow]} est TON soir cinema`
+      : `Based on your habits, ${dayNames[topDow]} is YOUR movie night`;
+    if (topCtx) insight += currentLang === 'fr' ? ` — souvent ${topCtx === 'solo' ? 'en solo' : topCtx === 'couple' ? 'en couple' : topCtx === 'family' ? 'en famille' : 'entre amis'}` : ` — usually ${topCtx}`;
+  } else if (Math.abs(nowHour - topHour) <= 1 && topHour >= 18) {
+    insight = currentLang === 'fr'
+      ? `C'est ton heure habituelle (${topHour}h) — un film qui te ressemble ?`
+      : `It's your usual time (${topHour}h) — a film that fits you?`;
+  }
+  if (!insight) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `
+    <div class="seret-memory-greeting">
+      <div class="sm-greeting">${hourGreeting} ${name ? esc(name) : ''} ${moonOrSun}</div>
+      <div class="sm-insight">${insight}</div>
+    </div>`;
+}
+
 // Expose world & challenge loaders to home init
 function loadHomeExtras() {
+  loadSeretMemoryGreeting();
   renderWorldCinemaStrip();
   loadChallenge();
   loadTVTonight();
@@ -3240,6 +3293,12 @@ async function loadTVTonight() {
 function injectHomeSlots() {
   const home = document.getElementById('homeView')?.querySelector('.section');
   if (!home) return;
+  if (!document.getElementById('seretMemorySlot')) {
+    const div = document.createElement('div');
+    div.id = 'seretMemorySlot';
+    // Place at very top of the Home section, before the Tonight CTA
+    home.prepend(div);
+  }
   if (!document.getElementById('challengeSlot')) {
     const div = document.createElement('div');
     div.id = 'challengeSlot';
