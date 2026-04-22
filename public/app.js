@@ -3053,6 +3053,53 @@ async function loadChallenge() {
 function loadHomeExtras() {
   renderWorldCinemaStrip();
   loadChallenge();
+  loadTVTonight();
+}
+
+// ===== TV Guide — tonight on TV =====
+function detectCountry() {
+  const stored = localStorage.getItem('seret-country');
+  if (stored) return stored;
+  const lang = (navigator.language || 'en-US').toUpperCase();
+  // Crude: use the country suffix of navigator.language; default to FR for fr-* users
+  const m = lang.match(/-([A-Z]{2})$/);
+  if (m) return m[1];
+  if (lang.startsWith('FR')) return 'FR';
+  return 'US';
+}
+
+async function loadTVTonight() {
+  const slot = document.getElementById('tvTonightSlot');
+  if (!slot) return;
+  const country = detectCountry();
+  try {
+    const res = await fetch(`/api/tv-tonight?country=${country}`);
+    const data = await res.json();
+    const items = (data.items || []).slice(0, 10);
+    if (!items.length) { slot.innerHTML = ''; return; }
+    // Cross-reference with user library: highlight titles in watchlist
+    const inWatchlistTitles = new Set(
+      library.filter(l => l.status === 'to_watch').map(l => (l.title || '').toLowerCase())
+    );
+    slot.innerHTML = `
+      <h2 class="section-title" style="margin-top:40px">📺 ${currentLang === 'fr' ? 'Ce soir a la TV' : 'Tonight on TV'}</h2>
+      <p class="section-sub">${currentLang === 'fr' ? `Sur les chaines ${country}` : `On ${country} channels`}</p>
+      <div class="tv-tonight-list">
+        ${items.map(ep => {
+          const inList = inWatchlistTitles.has((ep.title || '').toLowerCase());
+          return `
+          <div class="tv-item" onclick="doSearch(${JSON.stringify(esc(ep.title))});document.getElementById('searchInput').value=${JSON.stringify(esc(ep.title))}">
+            ${ep.image ? `<img src="${ep.image}" alt="">` : '<div class="tv-item-empty">📺</div>'}
+            <div class="tv-item-info">
+              <div class="tv-item-time">${ep.time} · ${esc(ep.channel)}</div>
+              <div class="tv-item-title">${esc(ep.title)}</div>
+              ${ep.episode ? `<div class="tv-item-ep">S${ep.season || '?'}E${ep.number || '?'} — ${esc(ep.episode)}</div>` : ''}
+              ${inList ? `<div class="tv-item-badge">🎯 ${currentLang === 'fr' ? 'Dans ta liste' : 'In your list'}</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch { slot.innerHTML = ''; }
 }
 
 // Inject slots into Home (done once after DOM is ready)
@@ -3064,6 +3111,11 @@ function injectHomeSlots() {
     div.id = 'challengeSlot';
     // Insert after seasonalBanner
     document.getElementById('seasonalBanner').after(div);
+  }
+  if (!document.getElementById('tvTonightSlot')) {
+    const div = document.createElement('div');
+    div.id = 'tvTonightSlot';
+    home.appendChild(div);
   }
   if (!document.getElementById('worldCinemaSlot')) {
     const div = document.createElement('div');

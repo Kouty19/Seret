@@ -715,6 +715,73 @@ app.get('/api/vapid-public-key', (req, res) => {
   res.json({ key });
 });
 
+// ===== TV Guide — tonight on TV (via TVmaze) =====
+// Lightweight proxy around api.tvmaze.com/schedule to power a "Ce soir a la TV" section.
+function httpGetJson(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { Accept: 'application/json', 'User-Agent': 'Seret/1.0' } }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
+// Primary channels we want to surface first per country (order = priority)
+const TV_CHANNELS_BY_COUNTRY = {
+  FR: ['TF1', 'France 2', 'France 3', 'France 5', 'M6', 'Arte', 'Canal+', 'W9', 'TMC', 'C8'],
+  US: ['NBC', 'ABC', 'CBS', 'FOX', 'HBO', 'AMC', 'FX', 'Showtime'],
+  GB: ['BBC One', 'BBC Two', 'ITV', 'Channel 4', 'Channel 5', 'Sky One'],
+  ES: ['Antena 3', 'Telecinco', 'La 1', 'La 2', 'Cuatro', 'La Sexta'],
+  DE: ['ARD', 'ZDF', 'RTL', 'ProSieben', 'Sat.1', 'VOX'],
+  IT: ['Rai 1', 'Rai 2', 'Rai 3', 'Canale 5', 'Italia 1', 'Rete 4'],
+  IL: ['Keshet 12', 'Kan 11', 'Reshet 13', 'HOT'],
+  BR: ['Globo', 'SBT', 'Record TV', 'Band'],
+};
+
+app.get('/api/tv-tonight', async (req, res) => {
+  const { country = 'FR' } = req.query;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const data = await httpGetJson(`https://api.tvmaze.com/schedule?country=${country}&date=${today}`);
+    const priority = TV_CHANNELS_BY_COUNTRY[country] || [];
+    // Keep evening primetime (18:00–23:59)
+    const tonight = (Array.isArray(data) ? data : []).filter(ep => {
+      const time = ep.airtime || '';
+      return time >= '18:00' && time <= '23:59';
+    });
+    // Sort by channel priority then by time
+    tonight.sort((a, b) => {
+      const ca = a.show?.network?.name || a.show?.webChannel?.name || '';
+      const cb = b.show?.network?.name || b.show?.webChannel?.name || '';
+      const ia = priority.findIndex(p => ca.includes(p));
+      const ib = priority.findIndex(p => cb.includes(p));
+      const wa = ia === -1 ? 99 : ia;
+      const wb = ib === -1 ? 99 : ib;
+      if (wa !== wb) return wa - wb;
+      return (a.airtime || '').localeCompare(b.airtime || '');
+    });
+    const items = tonight.slice(0, 30).map(ep => ({
+      title: ep.show?.name || ep.name,
+      episode: ep.name,
+      season: ep.season, number: ep.number,
+      time: ep.airtime || '',
+      channel: ep.show?.network?.name || ep.show?.webChannel?.name || '',
+      image: ep.show?.image?.medium || null,
+      summary: (ep.show?.summary || '').replace(/<[^>]+>/g, '').slice(0, 200),
+      genres: ep.show?.genres || [],
+      type: ep.show?.type || 'Scripted',
+      // TVmaze embeds imdb id we can use to link to TMDB later
+      imdb: ep.show?.externals?.imdb || null,
+    }));
+    res.json({ country, items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ===== World cinema — films from a given country =====
 app.get('/api/world-cinema', async (req, res) => {
   const { country = 'FR', lang = 'en-US' } = req.query;
