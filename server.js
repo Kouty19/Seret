@@ -715,47 +715,12 @@ app.get('/api/vapid-public-key', (req, res) => {
   res.json({ key });
 });
 
-// ===== Stripe Premium checkout =====
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || '';
-const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || ''; // e.g. price_xxxxx for €4.99/mo
-
-app.post('/api/stripe/create-checkout', async (req, res) => {
-  if (!STRIPE_SECRET || !STRIPE_PRICE_ID) {
-    return res.status(500).json({ error: 'Stripe not configured' });
-  }
-  const { email = '', userId = '' } = req.body;
-  const origin = req.headers.origin || `https://${req.headers.host}`;
-  // Call Stripe REST API via form-urlencoded (no SDK dep)
-  const payload = new URLSearchParams({
-    mode: 'subscription',
-    'line_items[0][price]': STRIPE_PRICE_ID,
-    'line_items[0][quantity]': '1',
-    success_url: `${origin}/?premium=success`,
-    cancel_url: `${origin}/?premium=cancel`,
-    customer_email: email,
-    'metadata[user_id]': userId,
-    'subscription_data[metadata][user_id]': userId,
-  });
-  try {
-    const body = payload.toString();
-    const data = await new Promise((resolve, reject) => {
-      const req2 = https.request({
-        hostname: 'api.stripe.com', path: '/v1/checkout/sessions', method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(body),
-          Authorization: `Bearer ${STRIPE_SECRET}`,
-        },
-      }, (r) => {
-        let buf = ''; r.on('data', c => buf += c);
-        r.on('end', () => { try { resolve(JSON.parse(buf)); } catch (e) { reject(e); } });
-      });
-      req2.on('error', reject);
-      req2.write(body); req2.end();
-    });
-    if (data.error) return res.status(500).json({ error: data.error.message });
-    res.json({ url: data.url });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+// ===== Stripe Premium checkout (DISABLED for freemium launch) =====
+// All Seret features are free for the moment. Premium gating will activate
+// when we reach 500–1000 monthly active users. This endpoint now returns
+// 503 instead of creating a Stripe session, so accidental UI calls are inert.
+app.post('/api/stripe/create-checkout', (req, res) => {
+  res.status(503).json({ error: 'Premium is currently free — no checkout needed.' });
 });
 
 // ===== TV Guide — tonight on TV (via TVmaze) =====
@@ -1052,17 +1017,19 @@ async function runClass() {
 });
 
 app.get('/premium', (req, res) => {
+  // Freemium launch — everything is free. /premium shows a "thank you, enjoy"
+  // teaser with the upcoming Premium feature list. No checkout button.
   const html = `<!doctype html>
 <html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Seret Premium</title>
+<title>Seret — 100% gratuit</title>
 <link rel="stylesheet" href="/style.css">
 <style>
   body { padding: 60px 20px; max-width: 720px; margin: 0 auto; }
   .hero-premium { text-align: center; padding: 40px 0; }
   .hero-premium h1 { font-family: var(--serif); font-size: 56px; font-weight: 800; background: linear-gradient(135deg, var(--gold), #fff); -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 12px; }
-  .hero-premium .price { font-size: 18px; color: var(--text-dim); margin: 18px 0 30px; }
-  .hero-premium .price strong { font-size: 42px; color: var(--gold); font-family: var(--serif); }
+  .hero-premium p { font-size: 18px; color: var(--text); line-height: 1.6; }
+  .free-badge { display: inline-block; padding: 10px 22px; background: rgba(212,175,55,0.15); border: 1px solid var(--gold); border-radius: 100px; color: var(--gold); font-weight: 700; letter-spacing: 2px; text-transform: uppercase; font-size: 12px; margin: 20px 0; }
   .premium-features { list-style: none; padding: 0; margin: 40px 0; display: grid; gap: 12px; }
   .premium-features li { padding: 14px 18px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; font-size: 15px; }
   .premium-features li::before { content: '✓ '; color: var(--gold); font-weight: 700; margin-right: 8px; }
@@ -1070,48 +1037,26 @@ app.get('/premium', (req, res) => {
 </style></head><body>
 <a class="back" href="/">← Seret</a>
 <div class="hero-premium">
-  <h1>Seret Premium</h1>
-  <p style="color: var(--text);">Le cinéma sans limite.</p>
-  <p class="price"><strong>4,99€</strong> / mois — sans engagement</p>
-  <button class="btn btn-gold btn-lg" id="upgradeBtn" onclick="upgrade()">Passer Premium</button>
+  <h1>Merci d'utiliser Seret</h1>
+  <div class="free-badge">🎬 100% gratuit</div>
+  <p>Toutes les fonctionnalités sont gratuites pendant la phase de lancement.<br>
+  Aucune carte bancaire, aucun abonnement, aucune publicité.</p>
+  <p style="color:var(--text-dim);font-size:14px;margin-top:30px">Un jour, certaines features passeront sur un plan premium à 4,99€/mois — mais pas aujourd'hui.</p>
 </div>
+<h2 style="font-family:var(--serif);text-align:center;color:var(--text-bright);margin-top:60px">Tout est inclus :</h2>
 <ul class="premium-features">
-  <li>Seret AI illimitée — recommandations, chat, prédictions</li>
-  <li>Profils multiples illimités</li>
+  <li>Seret AI illimitée — recommandations, chat, prédictions, débat</li>
+  <li>Profils multiples (jusqu'à 5)</li>
   <li>Statistiques avancées — analyse d'évolution, ADN cinéma</li>
-  <li>Guide TV toutes chaînes + notifications intelligentes</li>
-  <li>Mode hors-ligne — accès à ta bibliothèque sans connexion</li>
-  <li>Badge Premium visible</li>
-  <li>Zéro publicité, à vie</li>
-  <li>Accès prioritaire aux nouvelles fonctionnalités</li>
+  <li>Guide TV intelligent</li>
+  <li>Stories, Friends, Cinema Night</li>
+  <li>Scan d'affiches par IA</li>
+  <li>Wrapped annuel téléchargeable</li>
+  <li>Multi-langues (8 langues dont hébreu & arabe)</li>
 </ul>
 <p style="text-align:center;color:var(--text-dim);font-size:13px;margin-top:40px">
-  Paiement sécurisé par Stripe. Annulable en 1 clic.
+  Un bug ? Une idée ? <a href="mailto:kouty@elevon.fr" style="color:var(--gold)">kouty@elevon.fr</a>
 </p>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script>
-  async function upgrade() {
-    const btn = document.getElementById('upgradeBtn');
-    btn.disabled = true; btn.textContent = '...';
-    let email = '', userId = '';
-    try {
-      const cfg = await (await fetch('/api/config')).json();
-      if (cfg.supabaseUrl && cfg.supabaseAnonKey) {
-        const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
-        const { data } = await sb.auth.getSession();
-        email = data?.session?.user?.email || '';
-        userId = data?.session?.user?.id || '';
-      }
-    } catch {}
-    const r = await fetch('/api/stripe/create-checkout', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, userId }),
-    });
-    const d = await r.json();
-    if (d.url) { window.location.href = d.url; }
-    else { alert(d.error || 'Error'); btn.disabled = false; btn.textContent = 'Passer Premium'; }
-  }
-</script>
 </body></html>`;
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
