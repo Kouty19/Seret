@@ -35,7 +35,7 @@
         <span class="logo-text">Seret</span>
       </a>
       <div class="search-wrapper">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <svg class="search-icon" onclick="toggleMobileSearch()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="searchInput" data-i18n-placeholder="search_placeholder" placeholder="Search movies & series...">
         <button class="mic-btn" id="micBtn" onclick="toggleVoiceSearch()" title="Voice search">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -126,6 +126,10 @@
     <!-- Library -->
     <section id="libraryView" class="view">
       <div class="section">
+        <div class="view-breadcrumb">
+          <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
+          <div class="view-breadcrumb-title" data-i18n="my_library">Ma bibliothèque</div>
+        </div>
         <div class="library-header">
           <h2 class="section-title" data-i18n="my_library">My Library</h2>
         </div>
@@ -149,6 +153,10 @@
     <!-- Friends -->
     <section id="friendsView" class="view">
       <div class="section">
+        <div class="view-breadcrumb">
+          <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
+          <div class="view-breadcrumb-title" data-i18n="friends_title">Amis</div>
+        </div>
         <div class="library-header"><h2 class="section-title" data-i18n="friends_title">Friends</h2></div>
         <div id="friendsAuthWall" class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" width="56" height="56"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
@@ -190,6 +198,10 @@
     <!-- Seret AI -->
     <section id="recommendView" class="view">
       <div class="section">
+        <div class="view-breadcrumb">
+          <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
+          <div class="view-breadcrumb-title">Seret AI</div>
+        </div>
         <h2 class="section-title">Seret AI</h2>
         <p class="section-sub" data-i18n="ai_sub">Cinematic intelligence tuned to your taste</p>
 
@@ -226,6 +238,10 @@
     <!-- Learn (educational) -->
     <section id="learnView" class="view">
       <div class="section">
+        <div class="view-breadcrumb">
+          <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
+          <div class="view-breadcrumb-title" data-i18n="learn_title">Apprendre</div>
+        </div>
         <h2 class="section-title" data-i18n="learn_title">Apprendre avec Seret</h2>
         <p class="section-sub" data-i18n="learn_sub">Du cinéma pour grandir — par thème et par âge</p>
         <div class="learn-categories" id="learnCategories"></div>
@@ -243,6 +259,10 @@
     <!-- Wrapped -->
     <section id="wrappedView" class="view">
       <div class="section">
+        <div class="view-breadcrumb">
+          <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
+          <div class="view-breadcrumb-title" data-i18n="wrapped_title">Wrapped</div>
+        </div>
         <h2 class="section-title" data-i18n="wrapped_title">Your Year in Cinema</h2>
         <p class="section-sub" id="wrappedYear">—</p>
         <div id="wrappedContent"></div>
@@ -457,6 +477,6 @@
     <div>This product uses the TMDB API but is not endorsed or certified by TMDB.</div>
   </footer>
 
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>

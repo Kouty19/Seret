@@ -2277,6 +2277,8 @@ function setActiveNav(v) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   document.querySelectorAll('.mbn-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   document.querySelectorAll('.view').forEach(v2 => v2.classList.remove('active'));
+  // Close the mobile search overlay if open, so navigation never feels "stuck"
+  document.body.classList.remove('search-open');
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
@@ -3692,6 +3694,34 @@ onAuthChange = async function () {
   await _prevAuthChange.apply(this, arguments);
   processPendingFriend().catch(() => {});
 };
+
+// ===== Mobile search overlay =====
+// On mobile the header only has a search icon. Tapping it flips `body.search-open`
+// which makes the input full-screen. Tapping the icon again (now an ✕) closes it.
+function toggleMobileSearch() {
+  const body = document.body;
+  const isOpen = body.classList.toggle('search-open');
+  if (isOpen) {
+    // Focus the input after the CSS transition kicks in
+    setTimeout(() => {
+      const input = document.getElementById('searchInput');
+      input?.focus();
+    }, 50);
+  } else {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchResults').classList.remove('active');
+  }
+}
+// Close the overlay when user clicks a result (openDetail closes it further down
+// via searchResults.classList.remove — but we also clear body.search-open so
+// tapping a result feels like the mobile search panel goes away).
+document.addEventListener('click', (e) => {
+  if (!document.body.classList.contains('search-open')) return;
+  if (e.target.closest('.search-item')) {
+    // Let the click propagate and then close the overlay
+    setTimeout(() => document.body.classList.remove('search-open'), 50);
+  }
+});
 
 // ===== Scroll fade hint for horizontal scrollers =====
 // Wraps known horizontal scrollers with .scroll-fade (adds a right-edge gradient
