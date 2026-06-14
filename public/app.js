@@ -1483,11 +1483,16 @@ async function doSearch(q) {
     fetch(`/api/person-search?q=${encodeURIComponent(q)}&lang=${lang}`).then(r => r.json()).catch(() => ({ person: null })),
   ]);
   const titles = titleRes.results || [];
+  const corrected = personRes.corrected || titleRes.corrected || null;
   let html = '';
+  if (corrected) {
+    html += `<div class="search-item" style="pointer-events:none;opacity:.9;border-bottom:1px solid var(--border)">
+      <div class="search-item-info"><div class="search-item-meta">🔍 ${currentLang === 'fr' ? 'Résultats pour' : 'Showing results for'} «&nbsp;<strong style="color:var(--violet,#a18cff)">${esc(corrected)}</strong>&nbsp;»</div></div></div>`;
+  }
   if (personRes.person) {
     const p = personRes.person;
     html += `
-      <div class="search-item" onclick="openPersonView(${p.id}, ${JSON.stringify(p.name).replace(/"/g, '&quot;')})" style="border-bottom:1px solid var(--border)">
+      <div class="search-item" onclick="openPersonView(${p.id}, ${jqa(p.name)})" style="border-bottom:1px solid var(--border)">
         ${p.profile ? `<img src="${p.profile}" loading="lazy" style="border-radius:50%">` : `<div class="no-poster">👤</div>`}
         <div class="search-item-info">
           <div class="search-item-title">${esc(p.name)}</div>

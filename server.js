@@ -223,12 +223,23 @@ app.get('/api/search', async (req, res) => {
   if (!q) return res.json({ results: [] });
   if (typeof q !== 'string' || q.length > 200) return res.status(400).json({ error: 'query too long' });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
-  const data = await tmdbFetch('/search/multi', { query: q, language: lang, include_adult: 'false' });
-  const results = (data.results || [])
+  const filterMap = (raw) => (raw || [])
     .filter(r => r.media_type === 'movie' || r.media_type === 'tv')
     .filter(isAppropriate)
     .map(mapItem);
-  res.json({ results });
+  const data = await tmdbFetch('/search/multi', { query: q, language: lang, include_adult: 'false' });
+  let results = filterMap(data.results);
+  let corrected = null;
+  // Nothing found → maybe a typo. Ask the AI what they meant, then re-search.
+  if (results.length === 0) {
+    corrected = await correctSpelling(q, lang);
+    if (corrected) {
+      const d2 = await tmdbFetch('/search/multi', { query: corrected, language: lang, include_adult: 'false' });
+      results = filterMap(d2.results);
+      if (results.length === 0) corrected = null;
+    }
+  }
+  res.json({ results, corrected });
 });
 
 app.get('/api/trending', async (req, res) => {
@@ -334,6 +345,23 @@ function callClaude(messages, maxTokens = 2000, system = null, model = 'claude-h
 function parseJSON(text) {
   const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/, '').trim();
   return JSON.parse(clean);
+}
+
+// Google-style "did you mean": when a search yields nothing, ask the fast model to
+// guess the correctly-spelled film/show/person the user meant, so we can re-search.
+async function correctSpelling(q, lang) {
+  if (!CLAUDE_API_KEY) return null;
+  const fr = String(lang).startsWith('fr');
+  const prompt = fr
+    ? `L'utilisateur a cherché "${q}" — c'est un film, une série ou un acteur/réalisateur, mais probablement mal orthographié. Réponds UNIQUEMENT avec le nom correct le plus probable (titre ou nom de personne), sans guillemets, sans explication, sans ponctuation autour. Si c'est déjà correct, renvoie-le tel quel.`
+    : `The user searched "${q}" — a film, show, or actor/director, likely misspelled. Reply with ONLY the most likely correct name (title or person name), no quotes, no explanation, no surrounding punctuation. If already correct, return it as-is.`;
+  try {
+    const text = await callClaude(prompt, 30);
+    const corrected = (text || '').trim().replace(/^["'«»\s]+|["'«»\s.]+$/g, '');
+    if (!corrected || corrected.length > 80) return null;
+    if (corrected.toLowerCase() === String(q).trim().toLowerCase()) return null;
+    return corrected;
+  } catch { return null; }
 }
 
 async function enrichWithTMDB(rec, lang) {
@@ -503,8 +531,17 @@ app.get('/api/person-search', async (req, res) => {
   if (typeof q !== 'string' || q.length > 200) return res.status(400).json({ error: 'query too long' });
   if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY not set' });
   try {
-    const search = await tmdbFetch('/search/person', { query: q, language: lang, include_adult: 'false' });
-    const p = (search.results || [])[0];
+    let search = await tmdbFetch('/search/person', { query: q, language: lang, include_adult: 'false' });
+    let p = (search.results || [])[0];
+    let corrected = null;
+    // No actor/director found → maybe a misspelling. Correct it and retry.
+    if (!p) {
+      corrected = await correctSpelling(q, lang);
+      if (corrected) {
+        search = await tmdbFetch('/search/person', { query: corrected, language: lang, include_adult: 'false' });
+        p = (search.results || [])[0];
+      }
+    }
     if (!p) return res.json({ person: null });
     const details = await tmdbFetch(`/person/${p.id}`, { language: lang, append_to_response: 'combined_credits' });
     const credits = (details.combined_credits?.cast || [])
@@ -525,6 +562,7 @@ app.get('/api/person-search', async (req, res) => {
         biography: details.biography,
       },
       credits: unique,
+      corrected,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
