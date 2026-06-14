@@ -431,6 +431,8 @@ async function initSupabase() {
     if (config.supabaseUrl && config.supabaseAnonKey && window.supabase) {
       sb = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
       sb.auth.onAuthStateChange(async (event, session) => {
+        console.log('🔐 SERET-AUTH event:', event, '| session:', !!session, '| user:', session?.user?.email || 'NULL');
+        window._lastAuthEvent = event;
         currentUser = session?.user || null;
         await onAuthChange();
       });
@@ -564,6 +566,23 @@ function updateAuthUI() {
     btn.classList.remove('logged-in');
     btn.innerHTML = `<span>${t('sign_in')}</span>`;
   }
+  updateAuthDebugBadge();
+}
+
+// === TEMPORAIRE : badge de diagnostic auth visible à l'écran ===
+function updateAuthDebugBadge() {
+  let el = document.getElementById('authDebugBadge');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'authDebugBadge';
+    el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;font:11px/1.4 monospace;'
+      + 'background:rgba(0,0,0,.85);color:#fff;padding:6px 9px;border-radius:8px;max-width:90vw;'
+      + 'border:1px solid #a18cff;pointer-events:none;white-space:pre';
+    document.body.appendChild(el);
+  }
+  const u = currentUser ? (currentUser.email || 'oui') : 'NULL ❌';
+  el.style.borderColor = currentUser ? '#34d399' : '#ff5577';
+  el.textContent = `🔐 user: ${u}\nevent: ${window._lastAuthEvent || '-'} | profils: ${(window.userProfiles||userProfiles||[]).length} | actif: ${activeProfile?.name || '-'}`;
 }
 
 async function loadProfile() {
@@ -2324,6 +2343,7 @@ function setActiveNav(v) {
   // Close the mobile search overlay if open, so navigation never feels "stuck"
   document.body.classList.remove('search-open');
   window.scrollTo({ top: 0, behavior: 'instant' });
+  updateAuthDebugBadge();
 }
 
 async function loadFriends() {
