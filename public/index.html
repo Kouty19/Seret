@@ -14,8 +14,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,700;1,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=33">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -45,7 +46,7 @@
       <nav class="nav">
         <button class="nav-btn active" data-view="home" onclick="showHome()"><span data-i18n="nav_home">Home</span></button>
         <button class="nav-btn" data-view="library" onclick="showLibrary()"><span data-i18n="nav_library">Library</span></button>
-        <button class="nav-btn" data-view="friends" onclick="showFriends()"><span data-i18n="nav_friends">Friends</span></button>
+        <button class="nav-btn" data-view="friends" onclick="showFriends()"><span data-i18n="nav_friends">Friends</span><span class="nav-badge" id="recoBadgeDesktop"></span></button>
         <button class="nav-btn" data-view="recommend" onclick="showRecommend()"><span data-i18n="nav_ai">Seret AI</span></button>
         <button class="nav-btn" data-view="learn" onclick="showLearn()"><span data-i18n="nav_learn">Apprendre</span></button>
         <button class="nav-btn" data-view="wrapped" onclick="showWrapped()"><span data-i18n="nav_wrapped">Wrapped</span></button>
@@ -115,8 +116,8 @@
           <button class="cat-tab" data-cat="documentary" onclick="selectCategory('documentary', this)" data-i18n="cat_docs">Docs</button>
           <button class="cat-tab" data-cat="anime" onclick="selectCategory('anime', this)" data-i18n="cat_anime">Anime</button>
         </div>
-        <h2 class="section-title" data-i18n="trending">Trending</h2>
-        <div class="grid" id="trendingGrid"></div>
+        <h2 class="section-title" data-num="01 / À l'affiche" data-i18n="trending">Trending</h2>
+        <div class="carousel" id="trendingGrid"></div>
 
         <!-- Friends activity feed -->
         <div id="activityFeedWrap"></div>
@@ -131,7 +132,7 @@
           <div class="view-breadcrumb-title" data-i18n="my_library">Ma bibliothèque</div>
         </div>
         <div class="library-header">
-          <h2 class="section-title" data-i18n="my_library">My Library</h2>
+          <h2 class="section-title" data-num="02 / Ta collection" data-i18n="my_library">My Library</h2>
         </div>
         <div class="library-tabs">
           <button class="lib-tab active" data-section="watched" onclick="selectLibrarySection('watched', this)" data-i18n="seen_list">Seen</button>
@@ -157,7 +158,7 @@
           <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
           <div class="view-breadcrumb-title" data-i18n="friends_title">Amis</div>
         </div>
-        <div class="library-header"><h2 class="section-title" data-i18n="friends_title">Friends</h2></div>
+        <div class="library-header"><h2 class="section-title" data-num="03 / Tribu" data-i18n="friends_title">Friends</h2></div>
         <div id="friendsAuthWall" class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" width="56" height="56"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
           <p data-i18n="friends_sign_in">Sign in to connect with friends</p>
@@ -202,7 +203,7 @@
           <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
           <div class="view-breadcrumb-title">Seret AI</div>
         </div>
-        <h2 class="section-title">Seret AI</h2>
+        <h2 class="section-title" data-num="04 / Intelligence">Seret <em>AI</em></h2>
         <p class="section-sub" data-i18n="ai_sub">Cinematic intelligence tuned to your taste</p>
 
         <div class="ai-card-section">
@@ -242,7 +243,7 @@
           <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
           <div class="view-breadcrumb-title" data-i18n="learn_title">Apprendre</div>
         </div>
-        <h2 class="section-title" data-i18n="learn_title">Apprendre avec Seret</h2>
+        <h2 class="section-title" data-num="05 / Académie" data-i18n="learn_title">Apprendre avec Seret</h2>
         <p class="section-sub" data-i18n="learn_sub">Du cinéma pour grandir — par thème et par âge</p>
         <div class="learn-categories" id="learnCategories"></div>
         <div class="semantic-search-wrap" style="margin-top:24px">
@@ -263,7 +264,7 @@
           <button class="view-breadcrumb-back" onclick="showHome()">← <span data-i18n="nav_home">Home</span></button>
           <div class="view-breadcrumb-title" data-i18n="wrapped_title">Wrapped</div>
         </div>
-        <h2 class="section-title" data-i18n="wrapped_title">Your Year in Cinema</h2>
+        <h2 class="section-title" data-num="06 / Rétrospective" data-i18n="wrapped_title">Your Year in Cinema</h2>
         <p class="section-sub" id="wrappedYear">—</p>
         <div id="wrappedContent"></div>
         <button class="btn btn-gold btn-lg" onclick="loadWrapped()" data-i18n="generate_wrapped">Generate Wrapped</button>
@@ -295,8 +296,12 @@
         </div>
         <div class="oauth-divider"><span data-i18n="or_with_email">or email</span></div>
         <div class="auth-form">
-          <input type="email" id="authEmail" data-i18n-placeholder="email_placeholder" placeholder="Email">
-          <input type="password" id="authPassword" data-i18n-placeholder="password_placeholder" placeholder="Password">
+          <input type="text" id="authName" class="auth-name-field" data-i18n-placeholder="name_placeholder" placeholder="Your name" style="display:none" autocomplete="name">
+          <input type="email" id="authEmail" data-i18n-placeholder="email_placeholder" placeholder="Email" autocomplete="email">
+          <div class="auth-pw-wrap">
+            <input type="password" id="authPassword" data-i18n-placeholder="password_placeholder" placeholder="Password" autocomplete="current-password">
+            <button type="button" class="auth-pw-toggle" id="authPwToggle" onclick="togglePasswordVisibility()" aria-label="Show password" title="Show password">👁</button>
+          </div>
           <div id="authError" class="auth-error"></div>
           <button class="btn btn-primary auth-submit-btn" id="authSubmitBtn" onclick="submitAuth()">
             <span data-i18n="sign_in" id="authSubmitText">Sign in</span>
@@ -460,6 +465,7 @@
     <button class="mbn-btn" data-view="friends" onclick="showFriends()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       <span data-i18n="nav_friends">Friends</span>
+      <span class="nav-badge" id="recoBadgeMobile"></span>
     </button>
   </nav>
 
@@ -477,6 +483,6 @@
     <div>This product uses the TMDB API but is not endorsed or certified by TMDB.</div>
   </footer>
 
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

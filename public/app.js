@@ -48,7 +48,7 @@ const i18n = {
     watched_how: 'How did you watch it?', skip: 'Skip',
     sign_in: 'Sign in', sign_out: 'Sign out',
     sign_in_title: 'Sign in to Seret', sign_in_sub: 'Save your library and share with friends',
-    email_placeholder: 'Email', password_placeholder: 'Password',
+    email_placeholder: 'Email', password_placeholder: 'Password', name_placeholder: 'Your name',
     no_account: 'No account?', create_account: 'Create one',
     create_account_title: 'Create your account', has_account: 'Already have an account?',
     fill_fields: 'Please fill in all fields',
@@ -180,7 +180,7 @@ const i18n = {
     watched_how: "C'etait comment ?", skip: 'Passer',
     sign_in: 'Connexion', sign_out: 'Deconnexion',
     sign_in_title: 'Connectez-vous a Seret', sign_in_sub: 'Sauvegardez votre bibliotheque',
-    email_placeholder: 'Email', password_placeholder: 'Mot de passe',
+    email_placeholder: 'Email', password_placeholder: 'Mot de passe', name_placeholder: 'Ton prénom',
     no_account: 'Pas de compte ?', create_account: 'Creer un compte',
     create_account_title: 'Creez votre compte', has_account: 'Deja un compte ?',
     fill_fields: 'Remplissez tous les champs',
@@ -461,6 +461,7 @@ async function onAuthChange() {
       checkDailyStreak();
       checkNewSeasons();
       loadIncomingRecos();
+      updateRecoBadge();
       processPendingAdd();
     }
   } else {
@@ -522,6 +523,7 @@ function subscribeToRealtime() {
       const r = payload.new;
       showToast(`📩 ${r.title}`);
       loadIncomingRecos();
+      updateRecoBadge();
     })
     .subscribe();
   realtimeChannels.push(recoCh);
@@ -619,14 +621,29 @@ function toggleAuthMode() {
   document.getElementById('authSubmitText').textContent = isSignup ? t('create_account') : t('sign_in');
   document.getElementById('authSwitchText').textContent = isSignup ? t('has_account') : t('no_account');
   document.getElementById('authSwitchLink').textContent = isSignup ? t('sign_in') : t('create_account');
+  // The name field only matters when creating an account.
+  const nameField = document.getElementById('authName');
+  if (nameField) nameField.style.display = isSignup ? 'block' : 'none';
+  const pw = document.getElementById('authPassword');
+  if (pw) pw.setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
+}
+function togglePasswordVisibility() {
+  const pw = document.getElementById('authPassword');
+  const btn = document.getElementById('authPwToggle');
+  if (!pw) return;
+  const show = pw.type === 'password';
+  pw.type = show ? 'text' : 'password';
+  if (btn) { btn.textContent = show ? '🙈' : '👁'; btn.classList.toggle('revealed', show); }
 }
 async function submitAuth() {
   if (!sb) return showToast('Supabase not configured');
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
+  const name = (document.getElementById('authName')?.value || '').trim();
   const errorEl = document.getElementById('authError');
   errorEl.textContent = '';
   errorEl.style.color = ''; // reset from any prior "check your email" success styling
+  if (authMode === 'signup' && !name) return (errorEl.textContent = t('fill_fields'));
   if (!email || !password) return (errorEl.textContent = t('fill_fields'));
   if (password.length < 6) return (errorEl.textContent = t('password_min'));
   const btn = document.getElementById('authSubmitBtn');
@@ -635,9 +652,10 @@ async function submitAuth() {
     ? await sb.auth.signUp({
         email, password,
         options: {
-          // user_metadata — surfaced in Supabase email templates as {{ .Data.lang }}
-          // so the welcome/confirm email can render in the user's language.
-          data: { lang: currentLang },
+          // user_metadata — full_name feeds the handle_new_user() trigger that sets
+          // the profile display_name; lang is surfaced in Supabase email templates
+          // as {{ .Data.lang }} so the welcome/confirm email renders in the user's language.
+          data: { lang: currentLang, full_name: name, name },
           emailRedirectTo: window.location.origin + window.location.pathname,
         },
       })
@@ -663,6 +681,7 @@ async function submitAuth() {
   closeAuthModal();
   document.getElementById('authEmail').value = '';
   document.getElementById('authPassword').value = '';
+  const nm = document.getElementById('authName'); if (nm) nm.value = '';
   showToast(authMode === 'signup' ? t('account_created') : t('signed_in'));
 }
 function signOut() {
@@ -1261,23 +1280,44 @@ function selectCategory(cat, btn) {
   btn.classList.add('active');
   loadTrending();
 }
+function renderHeroFallback(reason) {
+  document.getElementById('heroTitle').textContent = currentLang === 'fr' ? 'Bienvenue sur Seret' : 'Welcome to Seret';
+  document.getElementById('heroMeta').innerHTML = currentLang === 'fr'
+    ? 'Ton cinéma. Ton rythme. <span class="star">★</span>'
+    : 'Your cinema. Your pace. <span class="star">★</span>';
+  document.getElementById('heroDesc').textContent = reason || (currentLang === 'fr'
+    ? 'Découvre les films du moment, partage avec tes amis, et laisse Seret AI te guider.'
+    : 'Discover trending films, share with friends, and let Seret AI guide you.');
+}
 async function loadTrending() {
   const lang = currentLang === 'fr' ? 'fr-FR' : 'en-US';
   try {
     const res = await fetch(`/api/trending?lang=${lang}&category=${currentCategory}`);
     const data = await res.json();
-    if (data.error) return console.warn(data.error);
+    if (data.error) {
+      console.warn(data.error);
+      renderHeroFallback(currentLang === 'fr'
+        ? 'Configure TMDB_API_KEY dans .env pour charger les films tendance.'
+        : 'Set TMDB_API_KEY in .env to load trending films.');
+      return;
+    }
     const items = data.results || [];
     if (items.length > 0) {
       heroItem = items[0];
       const hero = document.getElementById('heroSection');
-      hero.style.backgroundImage = `url(${heroItem.backdrop || heroItem.poster || ''})`;
+      const img = heroItem.backdrop || heroItem.poster || '';
+      if (img) hero.style.backgroundImage = `url(${img})`;
       document.getElementById('heroTitle').textContent = heroItem.title;
       document.getElementById('heroMeta').innerHTML = `${heroItem.year} &middot; <span class="star">★</span> ${heroItem.rating?.toFixed(1) || '—'}`;
       document.getElementById('heroDesc').textContent = heroItem.overview || '';
+    } else {
+      renderHeroFallback();
     }
     document.getElementById('trendingGrid').innerHTML = items.map(r => trendingCardHTML(r)).filter(Boolean).join('');
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+    renderHeroFallback();
+  }
 }
 // Child-safety filter — when active profile is 'kid', hide content that is
 // flagged adult or has genres incompatible with kids (horror, erotic, war).
@@ -2268,6 +2308,7 @@ function showFriends() {
     }
     loadFriends();
     loadIncomingRecos();
+    markRecosSeen();
   } else {
     document.getElementById('friendsAuthWall').style.display = 'flex';
     document.getElementById('friendsContent').style.display = 'none';
@@ -2277,6 +2318,9 @@ function setActiveNav(v) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   document.querySelectorAll('.mbn-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   document.querySelectorAll('.view').forEach(v2 => v2.classList.remove('active'));
+  // Tag body with current view so CSS can pause expensive animations off-screen
+  document.body.classList.remove('view-home','view-library','view-friends','view-recommend','view-learn','view-wrapped');
+  document.body.classList.add('view-' + v);
   // Close the mobile search overlay if open, so navigation never feels "stuck"
   document.body.classList.remove('search-open');
   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -2472,6 +2516,35 @@ async function acceptReco(recoId, tmdbId, type, title) {
   quickAdd(tmdbId, type, 'to_watch', null);
   await sb.from('recommendations').update({ status: 'watched' }).eq('id', recoId);
   loadIncomingRecos();
+  updateRecoBadge();
+}
+
+// ===== Notification dot — counts films friends sent you that you haven't opened =====
+function setRecoBadge(n) {
+  ['recoBadgeDesktop', 'recoBadgeMobile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (n > 0) { el.textContent = n > 9 ? '9+' : String(n); el.classList.add('show'); }
+    else { el.textContent = ''; el.classList.remove('show'); }
+  });
+}
+async function updateRecoBadge() {
+  if (!sb || !currentUser) { setRecoBadge(0); return; }
+  try {
+    const { count } = await sb.from('recommendations')
+      .select('id', { count: 'exact', head: true })
+      .eq('to_user_id', currentUser.id).eq('status', 'sent');
+    setRecoBadge(count || 0);
+  } catch { /* ignore */ }
+}
+// Called when the user opens the Friends tab: the recos are now "seen", so clear the dot.
+async function markRecosSeen() {
+  if (!sb || !currentUser) return;
+  setRecoBadge(0);
+  try {
+    await sb.from('recommendations').update({ status: 'seen' })
+      .eq('to_user_id', currentUser.id).eq('status', 'sent');
+  } catch { /* ignore */ }
 }
 
 // ===== Wrapped =====
@@ -3310,20 +3383,26 @@ function renderWorldCinemaStrip() {
     <h2 class="section-title" style="margin-top:40px">🌍 ${t('world_cinema')}</h2>
     <p class="section-sub">${t('world_sub')}</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;padding:8px 0 16px">
-      ${WORLD_COUNTRIES.map(c => `<button class="btn btn-glass btn-sm" onclick="loadCountryFilms('${c.code}', ${JSON.stringify(esc(c.name))})">${c.flag} ${esc(c.name)}</button>`).join('')}
+      ${WORLD_COUNTRIES.map(c => `<button class="btn btn-glass btn-sm" onclick="loadCountryFilms('${c.code}')">${c.flag} ${esc(c.name)}</button>`).join('')}
     </div>
     <div id="worldCountryResults"></div>`;
 }
-async function loadCountryFilms(code, name) {
+async function loadCountryFilms(code) {
   const slot = document.getElementById('worldCountryResults');
+  if (!slot) return;
+  const country = WORLD_COUNTRIES.find(c => c.code === code);
+  const name = country ? `${country.flag} ${country.name}` : code;
   slot.innerHTML = `<div class="recs-loading"><div class="spinner"></div></div>`;
   try {
     const res = await fetch(`/api/world-cinema?country=${code}&lang=${currentLang === 'fr' ? 'fr-FR' : 'en-US'}`);
     const data = await res.json();
+    const cards = (data.results || []).map(r => trendingCardHTML(r)).filter(Boolean).join('');
     slot.innerHTML = `
-      <h3 class="friends-section-title">${name}</h3>
-      <div class="grid">${(data.results || []).map(r => trendingCardHTML(r)).filter(Boolean).join('')}</div>`;
-  } catch (e) { slot.innerHTML = ''; }
+      <h3 class="friends-section-title">${esc(name)}</h3>
+      ${cards ? `<div class="grid">${cards}</div>` : `<p class="section-sub">${currentLang === 'fr' ? 'Aucun film trouvé pour ce pays.' : 'No films found for this country.'}</p>`}`;
+  } catch (e) {
+    slot.innerHTML = `<p class="section-sub">${currentLang === 'fr' ? 'Erreur de chargement.' : 'Failed to load.'}</p>`;
+  }
 }
 
 // ===== Monthly challenge banner =====
@@ -3742,22 +3821,30 @@ document.addEventListener('click', (e) => {
     wrapper.style.position = 'relative';
     el.parentNode.insertBefore(wrapper, el);
     wrapper.appendChild(el);
+    let raf = 0;
     const update = () => {
       const nearEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 8;
       wrapper.classList.toggle('at-end', nearEnd);
+      raf = 0;
     };
-    el.addEventListener('scroll', update, { passive: true });
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update); };
+    el.addEventListener('scroll', onScroll, { passive: true });
     update();
     // Re-check when the content changes (new items injected)
-    new ResizeObserver(update).observe(el);
+    new ResizeObserver(onScroll).observe(el);
   }
   function scan() {
     document.querySelectorAll(SELECTOR).forEach(wrap);
   }
-  // Run on load + whenever new content might appear
+  // Run on load + observe DOM for newly injected scrollers (no polling)
   window.addEventListener('load', () => {
     scan();
-    setInterval(scan, 1500);
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.addedNodes.length) { scan(); return; }
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
   });
 })();
 
@@ -3793,14 +3880,34 @@ document.addEventListener('click', (e) => {
     tagAndObserve('#activityFeedWrap > *');
     tagAndObserve('.semantic-search-wrap');
   }
-  // Initial + re-scan whenever the home content is re-rendered
+  // Initial + re-scan whenever new home content is injected (MutationObserver, not polling)
   const scan = () => { try { scanOnce(); } catch {} };
   scan();
-  // Re-scan every 1.5s for newly-injected content (cheap; IntersectionObserver is idempotent after unobserve)
-  setInterval(scan, 1500);
+  let pending = false;
+  const mo = new MutationObserver(() => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; scan(); });
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
 })();
 
 // ===== Init =====
+document.body.classList.add('view-home');
+// ?view=library|recommend|friends|learn|wrapped — handy for direct links and testing
+window.addEventListener('DOMContentLoaded', () => {
+  const v = new URLSearchParams(location.search).get('view');
+  const fns = { library: 'showLibrary', recommend: 'showRecommend', friends: 'showFriends', learn: 'showLearn', wrapped: 'showWrapped' };
+  if (v && fns[v] && typeof window[fns[v]] === 'function') setTimeout(() => window[fns[v]](), 50);
+});
+let _scrollTagRaf = 0;
+window.addEventListener('scroll', () => {
+  if (_scrollTagRaf) return;
+  _scrollTagRaf = requestAnimationFrame(() => {
+    _scrollTagRaf = 0;
+    document.body.classList.toggle('scrolled', window.scrollY > 120);
+  });
+}, { passive: true });
 applyLang();
 capturePendingAddFromURL();
 loadTrending();
