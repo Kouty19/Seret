@@ -295,11 +295,11 @@ app.get('/api/details/:type/:id', async (req, res) => {
 });
 
 // ===== Claude wrapper (never expose "Claude" to user) =====
-function callClaude(messages, maxTokens = 2000, system = null) {
+function callClaude(messages, maxTokens = 2000, system = null, model = 'claude-haiku-4-5-20251001') {
   return new Promise((resolve, reject) => {
     if (!CLAUDE_API_KEY) return reject(new Error('Seret AI not configured'));
     const payload = {
-      model: 'claude-sonnet-4-6',
+      model,
       max_tokens: maxTokens,
       messages: Array.isArray(messages) ? messages : [{ role: 'user', content: messages }],
     };

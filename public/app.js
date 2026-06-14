@@ -1180,6 +1180,8 @@ function addToLibrary(item) {
   saveLibrary();
   // Immediate sync to Supabase so refresh doesn't lose it
   syncItemToSupabase(newItem);
+  // Reflect the change instantly in the library view (no refresh needed)
+  renderLibrary();
   return true;
 }
 
@@ -1284,7 +1286,7 @@ function cardHTML(r, isLibrary = false, readonly = false, friendId = null) {
         ${r.viewing_context ? `<div class="ctx-badge">${ctxEmoji(r.viewing_context)}</div>` : ''}
         ${isLibrary && !readonly ? `
           <div class="card-library-actions" onclick="event.stopPropagation()">
-            <button class="btn btn-xs btn-gold" onclick="event.stopPropagation();manualShare(${tmdbId}, '${type}', ${JSON.stringify(esc(r.title))})">💬 WhatsApp</button>
+            <button class="btn btn-xs btn-gold" onclick="event.stopPropagation();manualShare(${tmdbId}, '${type}', ${jqa(r.title)})">💬 WhatsApp</button>
             <button class="btn btn-xs btn-danger" onclick="event.stopPropagation();removeFromLibrary(${tmdbId}, '${type}')">${t('removed')}</button>
           </div>` : ''}
       </div>
@@ -1485,7 +1487,7 @@ async function doSearch(q) {
   if (personRes.person) {
     const p = personRes.person;
     html += `
-      <div class="search-item" onclick="openPersonView(${p.id}, ${JSON.stringify(esc(p.name))})" style="border-bottom:1px solid var(--border)">
+      <div class="search-item" onclick="openPersonView(${p.id}, ${JSON.stringify(p.name).replace(/"/g, '&quot;')})" style="border-bottom:1px solid var(--border)">
         ${p.profile ? `<img src="${p.profile}" loading="lazy" style="border-radius:50%">` : `<div class="no-poster">👤</div>`}
         <div class="search-item-info">
           <div class="search-item-title">${esc(p.name)}</div>
@@ -1619,11 +1621,11 @@ async function openDetail(type, id) {
     } else if (isInWatchlist) {
       primaryActions = `
         <button class="btn btn-primary" onclick="handleModalAdd('watched')">✓ ${t('mark_seen')}</button>
-        <button class="btn btn-danger" onclick="confirmRemoveFromLibrary(${d.id}, '${type}', ${JSON.stringify(esc(title))})">🗑 ${t('remove_btn')}</button>`;
+        <button class="btn btn-danger" onclick="confirmRemoveFromLibrary(${d.id}, '${type}', ${jqa(title)})">🗑 ${t('remove_btn')}</button>`;
     } else {
       primaryActions = `
         <button class="btn btn-glass" disabled style="opacity:0.7">✓ ${t('already_seen')}</button>
-        <button class="btn btn-danger" onclick="confirmRemoveFromLibrary(${d.id}, '${type}', ${JSON.stringify(esc(title))})">🗑 ${t('remove_btn')}</button>`;
+        <button class="btn btn-danger" onclick="confirmRemoveFromLibrary(${d.id}, '${type}', ${jqa(title)})">🗑 ${t('remove_btn')}</button>`;
     }
 
     body.innerHTML = `
@@ -1649,14 +1651,14 @@ async function openDetail(type, id) {
           </div>
         </div>
         ${userRatingHTML}
-        ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<a href="${providerSearchUrl(p.provider_name, title)}" target="_blank" rel="noopener noreferrer" title="${esc(p.provider_name)}" onclick="logAffiliateClick(${JSON.stringify(esc(p.provider_name))}, ${JSON.stringify(esc(title))})"><img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}"></a>`).join('')}</div>` : ''}
+        ${providers.length ? `<div class="modal-providers"><span class="providers-label">${t('available_on')}</span>${providers.map(p => `<a href="${providerSearchUrl(p.provider_name, title)}" target="_blank" rel="noopener noreferrer" title="${esc(p.provider_name)}" onclick="logAffiliateClick(${jqa(p.provider_name)}, ${jqa(title)})"><img src="https://image.tmdb.org/t/p/w92${p.logo_path}" alt="${esc(p.provider_name)}"></a>`).join('')}</div>` : ''}
         ${overview ? `<div class="modal-overview">${esc(overview)}</div>` : ''}
         <div class="modal-actions">
           ${primaryActions}
           ${trailer ? `<button class="btn btn-outline" onclick="toggleTrailer('${trailer.key}')">▶ ${t('watch_trailer')}</button>` : ''}
-          <button class="btn btn-outline" onclick="manualShare(${d.id}, '${type}', ${JSON.stringify(esc(title))})">💬 WhatsApp</button>
-          ${currentUser ? `<button class="btn btn-outline" onclick="openRecoModal(${d.id}, '${type}', ${JSON.stringify(esc(title))}, '${posterUrl || ''}')">↗ ${t('recommend_friend')}</button>` : ''}
-          <button class="btn btn-outline" onclick="loadCulturalContext(${JSON.stringify(esc(title))}, '${year}')">${t('cultural_btn')}</button>
+          <button class="btn btn-outline" onclick="manualShare(${d.id}, '${type}', ${jqa(title)})">💬 WhatsApp</button>
+          ${currentUser ? `<button class="btn btn-outline" onclick="openRecoModal(${d.id}, '${type}', ${jqa(title)}, '${posterUrl || ''}')">↗ ${t('recommend_friend')}</button>` : ''}
+          <button class="btn btn-outline" onclick="loadCulturalContext(${jqa(title)}, '${year}')">${t('cultural_btn')}</button>
         </div>
         <div id="trailerSlot"></div>
         <div id="culturalSlot"></div>
@@ -1677,7 +1679,7 @@ async function openDetail(type, id) {
         <div class="debate-box">
           <div class="ai-section-label">${t('debate_title')}</div>
           <textarea id="debateInput" placeholder="${t('debate_ph')}"></textarea>
-          <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="startDebate(${JSON.stringify(esc(title))})">${t('debate_btn')}</button>
+          <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="startDebate(${jqa(title)})">${t('debate_btn')}</button>
           <div id="debateResponse"></div>
         </div>
         ${cast.length ? `<div class="modal-section-title">${t('cast')}</div><div class="cast-grid">${cast.map(c => `
@@ -1933,12 +1935,16 @@ async function getRecommendations(surprise = false) {
   const watchlist = library.filter(i => i.status === 'to_watch');
   const skippedKeys = getNotInterested();
   const skipped = skippedKeys.map(k => { const [id, type] = k.split('_'); return { id: Number(id), type, title: '' }; });
+  // The active profile's kind (solo/couple/family/kid) drives the viewing context so
+  // the AI tailors picks to who's watching — a Couple profile gets couple-friendly recs.
+  const profileKind = activeProfile?.kind;
+  const viewingContext = profileKind === 'kid' ? 'family' : (profileKind || currentViewingContext || 'solo');
   try {
     const res = await fetch('/api/recommend', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         library: watched, watchlist, skipped, calibration: calibrationData,
-        lang: currentLang, viewingContext: currentViewingContext,
+        lang: currentLang, viewingContext,
         mood: currentMood, surprise,
       }),
     });
@@ -2841,6 +2847,12 @@ function esc(s) {
   d.textContent = String(s);
   return d.innerHTML;
 }
+// Safely embed a string as a JS argument inside a double-quoted onclick="..." attribute.
+// JSON.stringify handles JS escaping; the &quot; replacement keeps the double quotes from
+// breaking the HTML attribute (esc() does NOT escape quotes, which silently broke many buttons).
+function jqa(s) {
+  return JSON.stringify(String(s == null ? '' : s)).replace(/"/g, '&quot;');
+}
 
 function checkReminder() {
   const last = Math.max(0, ...library.map(i => i.addedAt || 0));
@@ -3556,7 +3568,7 @@ async function loadTVTonight() {
         ${items.map(ep => {
           const inList = inWatchlistTitles.has((ep.title || '').toLowerCase());
           return `
-          <div class="tv-item" onclick="doSearch(${JSON.stringify(esc(ep.title))});document.getElementById('searchInput').value=${JSON.stringify(esc(ep.title))}">
+          <div class="tv-item" onclick="doSearch(${jqa(ep.title)});document.getElementById('searchInput').value=${jqa(ep.title)}">
             ${ep.image ? `<img src="${ep.image}" alt="">` : '<div class="tv-item-empty">📺</div>'}
             <div class="tv-item-info">
               <div class="tv-item-time">${ep.time} · ${esc(ep.channel)}</div>
