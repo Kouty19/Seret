@@ -49,7 +49,7 @@ const i18n = {
     sign_in: 'Sign in', sign_out: 'Sign out',
     sign_in_title: 'Sign in to Seret', sign_in_sub: 'Save your library and share with friends',
     email_placeholder: 'Email', password_placeholder: 'Password', name_placeholder: 'Your name',
-    no_account: 'No account?', create_account: 'Create one',
+    no_account: 'No account?', create_account: 'Create one', forgot_password: 'Forgot password?',
     create_account_title: 'Create your account', has_account: 'Already have an account?',
     fill_fields: 'Please fill in all fields',
     password_min: 'Password must be at least 6 characters',
@@ -181,7 +181,7 @@ const i18n = {
     sign_in: 'Connexion', sign_out: 'Deconnexion',
     sign_in_title: 'Connectez-vous a Seret', sign_in_sub: 'Sauvegardez votre bibliotheque',
     email_placeholder: 'Email', password_placeholder: 'Mot de passe', name_placeholder: 'Ton prénom',
-    no_account: 'Pas de compte ?', create_account: 'Creer un compte',
+    no_account: 'Pas de compte ?', create_account: 'Creer un compte', forgot_password: 'Mot de passe oublié ?',
     create_account_title: 'Creez votre compte', has_account: 'Deja un compte ?',
     fill_fields: 'Remplissez tous les champs',
     password_min: 'Mot de passe : 6 caracteres min',
@@ -446,6 +446,8 @@ async function initSupabase() {
           currentUser = data.session?.user || currentUser || null;
         }
         await onAuthChange();
+        // Arrived via the reset-password email link → let them set a new password.
+        if (event === 'PASSWORD_RECOVERY') handlePasswordRecovery();
       });
       const { data: { session } } = await sb.auth.getSession();
       currentUser = session?.user || null;
@@ -654,6 +656,9 @@ function toggleAuthMode() {
   // The name field only matters when creating an account.
   const nameField = document.getElementById('authName');
   if (nameField) nameField.style.display = isSignup ? 'block' : 'none';
+  // "Forgot password" only makes sense when signing in.
+  const forgotRow = document.getElementById('authForgotRow');
+  if (forgotRow) forgotRow.style.display = isSignup ? 'none' : 'block';
   const pw = document.getElementById('authPassword');
   if (pw) pw.setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
 }
@@ -691,7 +696,22 @@ async function submitAuth() {
       })
     : await sb.auth.signInWithPassword({ email, password });
   btn.disabled = false;
-  if (result.error) { errorEl.textContent = result.error.message; return; }
+  if (result.error) {
+    const m = (result.error.message || '').toLowerCase();
+    if (authMode === 'login' && m.includes('invalid login credentials')) {
+      // Supabase can't tell "wrong password" from "no such email", so we guide both ways.
+      errorEl.innerHTML = currentLang === 'fr'
+        ? `Email ou mot de passe incorrect. Pas encore de compte ? <a href="#" onclick="toggleAuthMode();return false;" style="color:var(--violet,#a18cff);text-decoration:underline">Crée-en un</a>.`
+        : `Wrong email or password. No account yet? <a href="#" onclick="toggleAuthMode();return false;" style="color:var(--violet,#a18cff);text-decoration:underline">Create one</a>.`;
+    } else if (m.includes('email not confirmed')) {
+      errorEl.textContent = currentLang === 'fr'
+        ? 'Email pas encore confirmé — clique le lien reçu dans ta boîte mail.'
+        : 'Email not confirmed yet — click the link in your inbox.';
+    } else {
+      errorEl.textContent = result.error.message;
+    }
+    return;
+  }
   // If signup returned a user but no session, email confirmation is required.
   // Keep the modal open and show a clear "check your inbox" message instead of
   // pretending the user is signed in.
@@ -714,6 +734,47 @@ async function submitAuth() {
   const nm = document.getElementById('authName'); if (nm) nm.value = '';
   showToast(authMode === 'signup' ? t('account_created') : t('signed_in'));
 }
+
+// ===== Forgot password =====
+async function sendPasswordReset() {
+  if (!sb) return showToast('Supabase not configured');
+  const email = (document.getElementById('authEmail')?.value || '').trim();
+  const errorEl = document.getElementById('authError');
+  if (!email) {
+    errorEl.style.color = '';
+    errorEl.textContent = currentLang === 'fr'
+      ? 'Entre ton email au-dessus, puis clique « Mot de passe oublié ».'
+      : 'Enter your email above, then click "Forgot password".';
+    document.getElementById('authEmail')?.focus();
+    return;
+  }
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname,
+  });
+  // Always show success (don't reveal whether the email exists — security best practice).
+  errorEl.style.color = 'var(--gold)';
+  errorEl.textContent = currentLang === 'fr'
+    ? `📬 Si un compte existe pour ${email}, un lien de réinitialisation vient d'être envoyé. Vérifie ta boîte (et les spams).`
+    : `📬 If an account exists for ${email}, a reset link was just sent. Check your inbox (and spam).`;
+  if (error) console.warn('[reset] ', error.message);
+}
+
+// When the user clicks the reset link in their email, Supabase signs them in with a
+// recovery session and fires PASSWORD_RECOVERY — we show a "set new password" form.
+async function handlePasswordRecovery() {
+  const newPw = prompt(currentLang === 'fr'
+    ? 'Choisis un nouveau mot de passe (6 caractères min) :'
+    : 'Choose a new password (min 6 characters):');
+  if (!newPw) return;
+  if (newPw.length < 6) {
+    showToast(currentLang === 'fr' ? 'Trop court (6 min)' : 'Too short (6 min)');
+    return handlePasswordRecovery();
+  }
+  const { error } = await sb.auth.updateUser({ password: newPw });
+  if (error) { showToast('Error: ' + error.message); return; }
+  showToast(currentLang === 'fr' ? '✅ Mot de passe mis à jour' : '✅ Password updated');
+}
+
 function signOut() {
   try {
     // Keep 'seret-active-profile' so we highlight last-used on next login
