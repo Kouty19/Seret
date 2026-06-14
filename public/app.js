@@ -433,7 +433,18 @@ async function initSupabase() {
       sb.auth.onAuthStateChange(async (event, session) => {
         console.log('🔐 SERET-AUTH event:', event, '| session:', !!session, '| user:', session?.user?.email || 'NULL');
         window._lastAuthEvent = event;
-        currentUser = session?.user || null;
+        // Supabase fires a late INITIAL_SESSION (sometimes with a null session) that
+        // would wrongly clear a user we already have. Only an explicit SIGNED_OUT logs
+        // us out; for any other null event, re-verify against stored session and never
+        // clobber a known user.
+        if (session?.user) {
+          currentUser = session.user;
+        } else if (event === 'SIGNED_OUT') {
+          currentUser = null;
+        } else {
+          const { data } = await sb.auth.getSession();
+          currentUser = data.session?.user || currentUser || null;
+        }
         await onAuthChange();
       });
       const { data: { session } } = await sb.auth.getSession();
@@ -836,7 +847,17 @@ async function createProfileAndCalibrate() {
   if (btn) { btn.disabled = true; btn.textContent = '...'; }
   const kind = window._selectedKind || 'solo';
   const avatar = window._customAvatar || window._selectedEmoji || '🧘';
-  if (!sb || !currentUser) { showToast('Not signed in'); return; }
+  // A stray auth event may have cleared currentUser — recover it from stored session
+  // before giving up, and always re-enable the button so the user is never stuck on "...".
+  if (sb && !currentUser) {
+    const { data: { session } } = await sb.auth.getSession();
+    currentUser = session?.user || null;
+  }
+  if (!sb || !currentUser) {
+    showToast(currentLang === 'fr' ? 'Session perdue — reconnecte-toi' : 'Session lost — please sign in again');
+    if (btn) { btn.disabled = false; btn.textContent = t('continue'); }
+    return;
+  }
   const { data, error } = await sb.from('user_profiles').insert({
     account_id: currentUser.id, name, avatar, kind,
   }).select().single();
